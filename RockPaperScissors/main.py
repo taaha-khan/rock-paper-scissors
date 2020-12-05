@@ -1,25 +1,19 @@
 
 from kaggle_environments.envs.rps.agents import *
-from kaggle_environments import make, evaluate
+from kaggle_environments import make
 
+import concurrent.futures as processor
 from prettytable import from_csv
-import random
+import random, time
 
-pool = [
-
-	# Built-In Bots
-	'reactionary',
-	'counter_reactionary',
-	'statistical',
+agents = [
 
 	# Public Bots
 	'public/matrix.py',
 	'public/markov.py',
 	'public/memory.py',
 	'public/decision_tree.py',
-
-	# Random Agent
-	'random_agent.py',
+	'public/decision_tree_2.py',
 
 	# Old Contest Archived Bots
 	'archive/iocaine.py',
@@ -32,65 +26,102 @@ pool = [
 
 ]
 
-def main(pool, total_rounds = 200):
+def new_game(player1, player2):
 
-	data = {name: {
-		'games': 0,
-		'wins': 0,
-		'losses': 0,
-		'draws': 0,
-		'score': 0
-	} for name in pool}
+	env = make('rps')
 
-	env = make('rps', debug = True)
+	env.reset()
+	env.run([player1, player2])
+	
+	json = env.toJSON()
+	rewards = json['rewards']
 
-	with open('leaderboard/leaderboard.csv', 'w') as file:
-		file.write('rank,name,score,wins,draws,losses,games\n')
+	output = {
+		'winner': None,
+		'loser': None,
+		'draw': False,
+		'players': [player1, player2]
+	}
 
-	for i in range(total_rounds):
+	if None in rewards:
+		error_index = rewards.index(None)
+		rewards[error_index] = -1
 
-		player1 = random.choice(pool)
+	if rewards[0] > rewards[1]:
+		output['winner'] = player1
+		output['loser'] = player2
+	elif rewards[1] > rewards[0]:
+		output['winner'] = player2
+		output['loser'] = player1
+	else:
+		output['draw'] = True
 
-		player2 = random.choice(pool)
-		while player2 == player1:
-			player2 = random.choice(pool)
+	return output
 
-		print(f'\nGame {i + 1} - {player1} vs {player2}')
+def main(pool, n = 2):
 
-		env.reset()
-		env.run([player1, player2])
-		
-		json = env.toJSON()
-		rewards = json['rewards']
+	data = { name: {
+		'name': name, 'score': 0, 'win%': 0,
+		'wins': 0, 'draws': 0, 'losses': 0,
+		'games': 0
+	} for name in pool }
 
-		if rewards[0] > rewards[1]:
-			data[player1]['wins'] += 1
-			data[player2]['losses'] += 1
-			print(f'{player1} wins: {rewards[0]}')
-		elif rewards[1] > rewards[0]:
-			data[player2]['wins'] += 1
-			data[player1]['losses'] += 1
-			print(f'{player2} wins: {rewards[1]}')
-		else:
-			data[player1]['draws'] += 1
-			data[player2]['draws'] += 1
-			print(f'Draw Game')
-		
-		data[player1]['games'] += 1
-		data[player2]['games'] += 1
+	with processor.ProcessPoolExecutor() as executor:
 
-		data[player1]['score'] = data[player1]['wins'] / data[player1]['games']
-		data[player2]['score'] = data[player2]['wins'] / data[player2]['games']
+		outputs = []
+		games = []
 
-	pool = list(set(pool))
+		for player1 in pool:
+			for player2 in pool:
+				if player1 != player2:
+					for _ in range(n):
+						games.append(executor.submit(new_game, player1, player2))
+
+		print(f'{len(games)} games scheduled')
+
+		for game in processor.as_completed(games):
+			outputs.append(game.result())
+			print(f"{len(outputs)} games completed")
+
+	for output in outputs:
+		for player in output['players']:
+			if player == output['winner']:
+				data[player]['wins'] += 1
+			elif player == output['loser']:
+				data[player]['losses'] += 1
+			elif output['draw']:
+				data[player]['draws'] += 1
+			data[player]['games'] += 1
+			data[player]['win%'] = round(data[player]['wins'] / data[player]['games'], 3)
+	
+	for player in pool:
+		data[player]['score'] = data[player]['wins'] + (data[player]['draws'] / 2)
+		data[player]['score'] -= data[player]['losses']
+		data[player]['score'] = round(data[player]['score'], 3)
+
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
-	with open('leaderboard/leaderboard.csv', 'a') as file:
+	with open('leaderboard/leaderboard.csv', 'w') as file:
+		file.write(f"rank,{','.join(data[list(data.keys())[0]].keys())}")
 		for rank, name in enumerate(pool):
 			info = data[name]
-			file.write(f"{rank + 1},{name},{round(info['score'], 3)},{info['wins']},{info['draws']},{info['losses']},{info['games']}\n")
+			output = f'\n{rank + 1}'
+			for item in info:
+				output += f',{info[item]}'
+			file.write(output)
 
 	with open('leaderboard/leaderboard_table.txt', 'w') as file:
-		file.write(str(from_csv(open('leaderboard.csv'))))
+		file.write(str(from_csv(open('leaderboard/leaderboard.csv'))))
+
+def play(agent1, agent2):
+	
+	env = make('rps', debug = True)
+	env.run([agent1, agent2])
+
+	json = env.toJSON()
+	rewards = json['rewards']
+
+	print(f'{agent1}: {rewards[0]}  vs. {agent2}: {rewards[1]}')
 
 if __name__ == '__main__':
-	main(pool)
+	# play('hydra.py', 'public/memory.py')
+	main(agents)
