@@ -44,6 +44,7 @@ def get_statistics(values) -> List[float]:
 	]
 
 def decision_tree_agent(observation, configuration, window=10, stages=3, random_freq=0.25, max_samples=1000, warmup_period=25):    
+	
 	global history
 	warmup_period = warmup_period  # if os.environ.get('KAGGLE_KERNEL_RUN_TYPE','') != 'Interactive' else 0
 	models = [ None ] + [ DecisionTreeClassifier() ] * stages
@@ -146,17 +147,14 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 					
 	# During the warmup period, play random to get a feel for the opponent 
 	if (observation.step <= max(warmup_period,window)):
-		actor  = 'warmup'
 		action = random_agent(observation, configuration)    
 	
 	# # Play a purely random move occasionally, which will hopefully distort any opponent statistics
 	# elif (random.random() <= random_freq):
-	#     actor  = 'random'
 	#     action = random_agent(observation, configuration)
 		
 	# But mostly use DecisionTreeClassifier to predict the next move
 	else:
-		actor  = 'DecisionTree'
 		action = (expected + 1) % configuration.signs
 	
 	# Persist state
@@ -169,6 +167,6 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 		history['opponent'].append(random.randint(0, 2))
 
 	# Print debug information
-	time_taken = time.perf_counter() - time_start
-	# print(f'{1000*time_taken:3.0f}ms | {step:4d} | opp = {opponent_action} | exp = {expected} | act = {action} | {actor:7s} | {100*winrate:5.1f}% {winstats}')    
+	# time_taken = time.perf_counter() - time_start
+	# print(f'{1000*time_taken:3.0f}ms | {step:4d} | opp = {opponent_action} | exp = {expected} | act = {action} | {100*winrate:5.1f}% {winstats}')    
 	return int(action)
