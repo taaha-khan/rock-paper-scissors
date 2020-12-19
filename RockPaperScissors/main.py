@@ -9,10 +9,10 @@ import random, time
 agents = [
 
 	# Public Bots
-	# 'public/markov.py',
 	'public/memory.py',
 	'public/decision_tree.py',
 	'public/decision_tree_2.py',
+	'public/rfind.py',
 
 	# Old Contest Archived Bots
 	'archive/iocaine.py',
@@ -21,9 +21,10 @@ agents = [
 	'archive/rank1.py',
 	'archive/dllu1.py',
 	'archive/bumble.py',
+	'archive/meta_fix.py',
 
 	# Flagship
-	'hydra.py'
+	'hydra.py',
 
 ]
 
@@ -123,7 +124,7 @@ def play(agent1, agent2):
 	rewards = json['rewards']
 
 	print(f'{agent1}: {rewards[0]}  vs  {agent2}: {rewards[1]}')
-
+ 
 if __name__ == '__main__':
-	# play('hydra.py', 'archive/bumble.py')
-	main()
+	play('hydra.py', 'archive/iocaine.py')
+	# main(pool = ['archive/bumble.py', 'archive/dllu1.py', 'archive/meta_fix.py', 'archive/rank1.py', 'archive/testing.py', 'public/rfind.py', 'public/memory.py'], n = 4)

@@ -3,7 +3,7 @@
  __ __ __ __ __ __ __ __ __ __ __ __ __ __ __
 |                                            |
 |   Copyright (C) 2020 Taaha Khan @taahakhan |
-|   "Kaggle RPS Hydra Agent" - V.3.0         |
+|   "Kaggle RPS Hydra Agent" - V.4.0         |
 |   Rock Paper Scissors Algorithm with hydra |
 |   net of strong agents to pick the next    |
 |   move from and beat the opponent          |
@@ -36,7 +36,7 @@ class Agent():
 	
 	def step(self, history, obs = None, config = None):
 		''' Next moves with historic move data '''
-		return self.initial_step()
+		return random.randrange(3)
 	
 	def get_action(self, history, obs, config):
 		''' DO NOT CHANGE: Universal '''
@@ -634,6 +634,7 @@ class Rank1(Agent):
 		else:
 			predict = random.choice(self.your_his)
 		self.output = random.choice(self.not_lose[predict])
+		# self.output = self.beat[predict]
 		return 'RPS'.index(self.output)
 
 	def set_last_action(self, actions):
@@ -951,7 +952,7 @@ class Memory_patterns(Agent):
 		self.noise = noise
 
 		# maximum steps in the pattern
-		self.steps_max = 12
+		self.steps_max = 6
 		# minimum steps in the pattern
 		self.steps_min = 3
 		# maximum amount of steps until reassessment of effectiveness of current memory patterns
@@ -1075,45 +1076,233 @@ class Memory_patterns(Agent):
 		self.current_memory[-1] = actions[-1]
 
 
+# RPS_Meta_Fix Agent: https://web.archive.org/web/20200220023240/http://www.rpscontest.com/entry/5649874456412160
+class Meta_fix(Agent):
+	def __init__(self):
+		self.RNA={'RR':'1','RP':'2','RS':'3','PR':'4','PP':'5','PS':'6','SR':'7','SP':'8','SS':'9'}
+		self.mix={'RR':'R','RP':'R','RS':'S','PR':'R','PP':'P','PS':'P','SR':'S','SP':'P','SS':'S'}
+		self.rot={'R':'P','P':'S','S':'R'}
+
+		self.DNA=[""]*3
+		self.prin=[random.choice("RPS")]*18
+		self.meta=[random.choice("RPS")]*6
+		self.skor1=[[0]*18,[0]*18,[0]*18,[0]*18,[0]*18,[0]*18]
+		self.skor2=[0]*6
+
+		self.output = random.choice('RPS')
+	
+	def initial_step(self, obs, config):
+		self.output=self.rot[self.meta[self.skor2.index(max(self.skor2))]]
+		return 'RPS'.index(self.output)
+
+	def step(self, history, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
+		for j in range(18):
+			for i in range(4):
+				self.skor1[i][j]*=0.8
+			for i in range(4,6):
+				self.skor1[i][j]*=0.5
+			for i in range(0,6,2):
+				self.skor1[i][j]-=(input==self.rot[self.rot[self.prin[j]]])
+				self.skor1[i+1][j]-=(self.output==self.rot[self.rot[self.prin[j]]])
+			for i in range(2,6,2):
+				self.skor1[i][j]+=(input==self.prin[j])
+				self.skor1[i+1][j]+=(self.output==self.prin[j])
+			self.skor1[0][j]+=1.3*(input==self.prin[j])-0.3*(input==self.rot[self.prin[j]])
+			self.skor1[1][j]+=1.3*(self.output==self.prin[j])-0.3*(self.output==self.rot[self.prin[j]])
+		for i in range(6):
+			self.skor2[i]=0.9*self.skor2[i]+(input==self.meta[i])-(input==self.rot[self.rot[self.meta[i]]])
+		self.DNA[0]+=input
+		self.DNA[1]+=self.output
+		self.DNA[2]+=self.RNA[input+self.output]
+		for i in range(3):
+			j=min(21,len(self.DNA[2]))
+			k=-1
+			while j>1 and k<0:
+				j-=1
+				k=self.DNA[i].rfind(self.DNA[i][-j:],0,-1)
+			self.prin[2*i]=self.DNA[0][j+k]
+			self.prin[2*i+1]=self.rot[self.DNA[1][j+k]]
+			k=self.DNA[i].rfind(self.DNA[i][-j:],0,j+k-1)
+			self.prin[2*i]=self.mix[self.prin[2*i]+self.DNA[0][j+k]]
+			self.prin[2*i+1]=self.mix[self.prin[2*i+1]+self.rot[self.DNA[1][j+k]]]
+		for i in range(6,18):
+			self.prin[i]=self.rot[self.prin[i-6]]
+		for i in range(0,6,2):
+			self.meta[i]=self.prin[self.skor1[i].index(max(self.skor1[i]))]
+			self.meta[i+1]=self.rot[self.prin[self.skor1[i+1].index(max(self.skor1[i+1]))]]
+		self.output=self.rot[self.meta[self.skor2.index(max(self.skor2))]]
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, actions):
+		self.output = 'RPS'[actions[-1]]
+
+
+# RFind Agent: https://www.kaggle.com/riccardosanson/rps-simple-rfind-agent
+class R_find(Agent):
+	
+	def __init__(self):
+		self.max_limit = 23  # can be modified
+		self.add_rotations = True
+
+		# number of predictors
+		self.numPre = 6
+		if self.add_rotations:
+			self.numPre *= 3
+
+		# number of meta-predictors
+		self.numMeta = 4
+		if self.add_rotations:
+			self.numMeta *= 3
+
+		# saves history
+		self.moves = ['', '', '']
+
+		self.beat = {'R':'P', 'P':'S', 'S':'R'}
+		self.dna =  {'RP':0, 'PS':1, 'SR':2,
+				'PR':3, 'SP':4, 'RS':5,
+				'RR':6, 'PP':7, 'SS':8}
+
+		self.p = ["P"]*self.numPre
+		self.m = ["P"]*self.numMeta
+		self.pScore = [[0]*self.numPre for i in range(8)]
+		self.mScore = [0]*self.numMeta
+
+		self.length = 0
+		self.threat = 0
+		self.output = "P"
+	
+	def initial_step(self, obs, config):
+		return self.step([], obs, config)
+
+	def step(self, history, observation, configuration):    
+
+		if observation.step < 2:
+			self.output = self.beat[self.output]
+			return 'RPS'.index(self.output)
+
+		input = "RPS"[observation.lastOpponentAction]
+
+		# threat of opponent
+		outcome = (self.beat[input]==self.output) - (input==self.beat[self.output])
+		self.threat = 0.9*self.threat - 0.1*outcome
+		
+		# refresh pScore
+		for i in range(self.numPre):
+			pp = self.p[i]
+			bpp = self.beat[pp]
+			bbpp = self.beat[bpp]
+			self.pScore[0][i] = 0.9*self.pScore[0][i] + 0.1*((input==pp)-(input==bbpp))
+			self.pScore[1][i] = 0.9*self.pScore[1][i] + 0.1*((self.output==pp)-(self.output==bbpp))
+			self.pScore[2][i] = 0.8*self.pScore[2][i] + 0.3*((input==pp)-(input==bbpp)) + \
+							0.1*(self.length % 3 - 1)
+			self.pScore[3][i] = 0.8*self.pScore[3][i] + 0.3*((self.output==pp)-(self.output==bbpp)) + \
+							0.1*(self.length % 3 - 1)
+
+		# refresh mScore
+		for i in range(self.numMeta):
+			self.mScore[i] = 0.9*self.mScore[i] + 0.1*((input==self.m[i])-(input==self.beat[self.beat[self.m[i]]])) + \
+						0.05*(self.length % 5 - 2)
+
+		# refresh moves
+		self.moves[0] += str(self.dna[input+self.output])
+		self.moves[1] += input
+		self.moves[2] += self.output
+
+		# refresh length
+		self.length += 1
+
+		# new predictors
+		limit = min([self.length,self.max_limit])
+		for y in range(3):	# my moves, his, and both
+			j = limit
+			while j>=1 and not self.moves[y][self.length-j:self.length] in self.moves[y][0:self.length-1]:
+				j-=1
+			if j>=1:
+				i = self.moves[y].rfind(self.moves[y][self.length-j:self.length],0,self.length-1)
+				self.p[0+2*y] = self.moves[1][j+i] 
+				self.p[1+2*y] = self.beat[self.moves[2][j+i]]
+
+		# rotations of predictors
+		if self.add_rotations:
+			for i in range(int(self.numPre/3),self.numPre):
+				self.p[i]=self.beat[self.beat[self.p[i-int(self.numPre/3)]]]
+
+		# new meta
+		for i in range(0,4,2):
+			self.m[i] = self.p[self.pScore[i].index(max(self.pScore[i]))]
+			self.m[i+1] = self.beat[self.p[self.pScore[i+1].index(max(self.pScore[i+1]))]]
+
+		# rotations of meta
+		if self.add_rotations:
+			for i in range(4,12):
+				self.m[i]=self.beat[self.beat[self.m[i-4]]]
+		
+		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
+		if self.threat > 0.4:
+			self.output = self.beat[self.beat[self.output]]
+
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, actions):
+		self.output = 'RPS'[actions[-1]]
+
+
 # Hydra Net of Agents
 agents = {
 
 	'dllu1': Dllu1(),
 	'rank1': Rank1(),
 
-	'testing_please_ignore': Testing_please_ignore(),
-	# 'centrifugal_bumblepuppy': Bumble(),
+	'meta-fix': Meta_fix(),
+	'rfind': R_find(),
+
+	'testing-please-ignore': Testing_please_ignore(),
+	'centrifugal-bumblepuppy': Bumble(),
 
 	'iocaine': Iocaine(),
 	'greenberg': Greenberg(),
 
-	'decision_tree': Decision_tree(),
-	'memory_patterns': Memory_patterns(),
+	'decision-tree': Decision_tree(),
+	'memory-patterns': Memory_patterns(),
 
 	# ------------------------------------
 
-	'inverse_dllu1': Dllu1(),
-	'inverse_rank1': Rank1(),
+	'inverse-dllu1': Dllu1(),
+	'inverse-rank1': Rank1(),
 
-	'inverse_testing_please_ignore': Testing_please_ignore(),
-	# 'inverse_centrifugal_bumblepuppy': Bumble(),
+	'inverse-meta-fix': Meta_fix(),
+	'inverse-rfind': R_find(),
 
-	'inverse_iocaine': Iocaine(),
-	'inverse_greenberg': Greenberg(),
+	'inverse-testing-please-ignore': Testing_please_ignore(),
+	'inverse-centrifugal-bumblepuppy': Bumble(),
 
-	'inverse_decision_tree': Decision_tree(),
-	'inverse_memory_patterns': Memory_patterns()
+	'inverse-iocaine': Iocaine(),
+	'inverse-greenberg': Greenberg(),
+
+	'inverse-decision-tree': Decision_tree(),
+	'inverse-memory-patterns': Memory_patterns()
 
 }
 
 hydra_agents = list(agents.keys())
-state = {agent: [1, 1] for agent in hydra_agents}
+state = {agent: {
+	'beta-distribution': [1, 1],
+	'win-percentage': [0, 0],
+	'drop-switch': 0,
+	'elo': 0
+} for agent in hydra_agents}
+
+meta_strategy_scores = {key: {
+	'move': None, 'score': 0, 'beta': [1, 1], 'agent': None, 'agent-scores': {}
+} for key in state[hydra_agents[0]].keys()}
 
 previous = {}
 history = []
 
 def hydra_agent(obs, config):
 
+	global meta_strategy_scores
 	global previous
 	global history
 	global state
@@ -1122,7 +1311,18 @@ def hydra_agent(obs, config):
 	step_size = 3		# how much we increase alpha and beta 
 	decay_rate = 1.05  	# how much do we decay old historical data
 	
-	if obs.step: history[-1]['competitorStep'] = obs.lastOpponentAction
+	if obs.step: 
+		history[-1]['competitorStep'] = obs.lastOpponentAction
+		for strategy in meta_strategy_scores:
+
+			last_action = meta_strategy_scores[strategy]['move']
+			# meta_strategy_scores[strategy]['score'] = (meta_strategy_scores[strategy]['score'] - 1) / 1.01 + 1
+
+			if (history[-1]['competitorStep'] - last_action) % 3 == 1:
+				meta_strategy_scores[strategy]['score'] -= 1
+			elif (history[-1]['competitorStep'] - last_action) % 3 == 2:
+				meta_strategy_scores[strategy]['score'] += 1
+
 	previous[obs.step] = {}
 
 	inverse_history = []
@@ -1134,8 +1334,6 @@ def hydra_agent(obs, config):
 	
 	inverse_obs = lambda: None
 	inverse_obs.lastOpponentAction = history[-1]['step'] if obs.step else None
-	inverse_obs.reward = -obs.reward
-	inverse_obs.remainingOverageTime = obs.remainingOverageTime
 	inverse_obs.step = obs.step
 
 	inverse_actions = [packet['competitorStep'] for packet in history]
@@ -1147,53 +1345,72 @@ def hydra_agent(obs, config):
 
 			prev_step = previous[obs.step - 1][name]
 
-			state[name][1] = (state[name][1] - 1) / decay_rate + 1
-			state[name][0] = (state[name][0] - 1) / decay_rate + 1
+			state[name]['beta-distribution'][0] = (state[name]['beta-distribution'][0] - 1) / decay_rate + 1
+			state[name]['beta-distribution'][1] = (state[name]['beta-distribution'][1] - 1) / decay_rate + 1
 			
 			# Lost Last Round
 			if (history[-1]['competitorStep'] - prev_step) % 3 == 1:
-				state[name][1] += step_size
+				state[name]['beta-distribution'][1] += step_size
+				state[name]['drop-switch'] = 0
+				state[name]['elo'] -= 1
+			
 			# Won Last Round
 			elif (history[-1]['competitorStep'] - prev_step) % 3 == 2:
-				state[name][0] += step_size
+				
+				state[name]['beta-distribution'][0] += step_size
+				state[name]['drop-switch'] += 1
+				
+				state[name]['win-percentage'][0] += 1
+				state[name]['elo'] += 1
+
 			# Tie Round
 			else:
-				state[name][0] += step_size / 2
-				state[name][1] += step_size / 2
-			
-			if name[:8] == 'inverse_':
+				state[name]['beta-distribution'][0] += step_size / 2
+				state[name]['beta-distribution'][1] += step_size / 2
+				
+				state[name]['drop-switch'] /= 2
+
+			if name[:8] == 'inverse-':
 				agent.set_last_action(inverse_actions)
 
+			state[name]['win-percentage'][1] = state[name]['win-percentage'][0] / obs.step
+
 		# Get agent action
-		if name[:8] == 'inverse_':
+		if name[:8] == 'inverse-':
 			agent_step = agent.get_action(inverse_history, inverse_obs, config)
 			previous[obs.step][name] = (agent_step + 1) % 3
 		else:
 			agent_step = agent.get_action(history, obs, config)
 			previous[obs.step][name] = agent_step
 
-	# Select Highest Rated Agent
+	# Select Highest Rated Agent from each Meta Selection Strategy
 
-	weights = []
 	for k in hydra_agents:
-		prob = np.random.beta(state[k][0], state[k][1])
-		weights.append(prob)
+		meta_strategy_scores['beta-distribution']['agent-scores'][k] = np.random.beta(state[k]['beta-distribution'][0], state[k]['beta-distribution'][1])
+		meta_strategy_scores['drop-switch']['agent-scores'][k] = state[k]['drop-switch']
+		meta_strategy_scores['win-percentage']['agent-scores'][k] = state[k]['win-percentage'][1]
+		meta_strategy_scores['elo']['agent-scores'][k] = state[k]['elo']
+		
+	for strategy in meta_strategy_scores:
+		sorted_agents = sorted(agents.keys(), key = lambda a: meta_strategy_scores[strategy]['agent-scores'][a], reverse = True)
+		meta_strategy_scores[strategy]['move'] = previous[obs.step][sorted_agents[0]]
+		meta_strategy_scores[strategy]['agent'] = sorted_agents[0]
 
-	best_prob = max(weights)
-	best_agent = hydra_agents[weights.index(best_prob)]
-	
+	best_strategy = sorted(meta_strategy_scores.keys(), key = lambda a: meta_strategy_scores[a]['score'], reverse = True)[0]
+	best_agent = meta_strategy_scores[best_strategy]['agent']
+
 	action = previous[obs.step][best_agent]
-	history.append({'step': action, 'agent': best_agent})
+	history.append({'step': action, 'agent': best_agent, 'strategy': best_strategy})
 
 	last_actions = [packet['step'] for packet in history]
 	for name, agent in agents.items():
-		if name[:8] != 'inverse_':
+		if name[:8] != 'inverse-':
 			agent.set_last_action(last_actions)
 
 	if PRINT_OUTPUT:
-		score = round(best_prob, 3)
-		pad = ' ' * (5 - len(str(score)))
-		print(f'Score: {score}{pad} -- {best_agent} ')
+		score = round(meta_strategy_scores[best_strategy]['score'], 3)
+		pad = ' ' * (3 - len(str(score)))
+		print(f'{obs.step} {best_strategy} -- score: {score}{pad} -- {best_agent} ')
 
 	if SAVE_DATA:
 		pd.DataFrame(history).to_csv('hydra_state.csv', index = False)

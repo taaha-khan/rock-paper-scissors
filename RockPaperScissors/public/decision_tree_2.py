@@ -5,9 +5,6 @@ import numpy as np
 from typing import List, Dict
 from sklearn.tree import DecisionTreeClassifier
 
-def random_agent(observation, configuration):
-	return random.randrange(3)
-
 def get_winstats(history) -> Dict[str,int]:
 	total = len(history['action'])
 	wins = 0
@@ -143,16 +140,13 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 				expected = prediction3 = models[3].predict(Z)[0]
 		
 		except Exception as exception:
-			print(exception)
+			# print(exception)
+			pass
 					
 	# During the warmup period, play random to get a feel for the opponent 
 	if (observation.step <= max(warmup_period,window)):
-		action = random_agent(observation, configuration)    
+		action = random.randrange(3)
 	
-	# # Play a purely random move occasionally, which will hopefully distort any opponent statistics
-	# elif (random.random() <= random_freq):
-	#     action = random_agent(observation, configuration)
-		
 	# But mostly use DecisionTreeClassifier to predict the next move
 	else:
 		action = (expected + 1) % configuration.signs

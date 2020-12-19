@@ -1,6 +1,20 @@
 
+'''
+ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __
+|                                            |
+|   Copyright (C) 2020 Taaha Khan @taahakhan |
+|   "Kaggle RPS Hydra Agent" - V.3.0         |
+|   Rock Paper Scissors Algorithm with hydra |
+|   net of strong agents to pick the next    |
+|   move from and beat the opponent          |
+|__ __ __ __ __ __ __ __ __ __ __ __ __ __ __|
+
+'''
+
+
 from sklearn.tree import DecisionTreeClassifier
 from collections import defaultdict
+from typing import List, Dict
 import pandas as pd
 import numpy as np
 import operator
@@ -8,12 +22,13 @@ import getpass
 import random
 import json
 import time
+import math
 
 LOCAL_MODE = getpass.getuser() == 'taaha'
 SAVE_DATA = LOCAL_MODE and False
-OUTPUT = not LOCAL_MODE
+PRINT_OUTPUT = not LOCAL_MODE
 
-class agent():
+class Agent():
 	''' Base class for all agents '''
 
 	def initial_step(self, obs = None, config = None):
@@ -24,13 +39,19 @@ class agent():
 		''' Next moves with historic move data '''
 		return self.initial_step()
 	
+	def get_action(self, history, obs, config):
+		''' DO NOT CHANGE: Universal '''
+		if obs.step == 0:
+			return int(self.initial_step(obs, config))
+		return int(self.step(history, obs, config))
+
 	def set_last_action(self, actions):
 		''' Overwriting Personal Agent History '''
 		return None
 	
 
 # similar to the transition matrix but rely on both previous steps
-class transition_tensor(agent):
+class Transition_tensor(Agent):
 	
 	def __init__(self, deterministic = False, counter_strategy = False, init_value = 0.1, decay = 1):
 		self.deterministic = deterministic
@@ -64,7 +85,7 @@ class transition_tensor(agent):
 
 
 # looks for the same pattern in history and returns the best answer to the most possible counter strategy
-class pattern_matching(agent):
+class Pattern_matching(Agent):
 	def __init__(self, steps = 3, deterministic = False, counter_strategy = False, init_value = 0.1, decay = 1):
 		self.deterministic = deterministic
 		self.counter_strategy = counter_strategy
@@ -95,7 +116,7 @@ class pattern_matching(agent):
 		if self.deterministic:
 			step = np.argmax(next_step_count)
 		else:
-			step = random.choice([0,1,2], p = next_step_count/next_step_count.sum())
+			step = np.random.choice([0,1,2], p = next_step_count/next_step_count.sum())
 		
 		if self.counter_strategy:
 			# we predict our step using transition matrix (as competitor can do) and beat probable competitor step
@@ -106,7 +127,7 @@ class pattern_matching(agent):
 
 
 # Decision Tree Classifier: https://www.kaggle.com/alexandersamarin/decision-tree-classifier
-class decision_tree(agent):
+class Decision_tree(Agent):
 
 	def __init__(self, noise = False):
 
@@ -215,7 +236,8 @@ class decision_tree(agent):
 
 
 # Greenberg Agent: https://www.kaggle.com/group16/rps-roshambo-competition-greenberg
-class greenberg(agent):
+class Greenberg(Agent):
+
 	def __init__(self):
 		self.my_hist = []
 		self.opponent_hist = []
@@ -400,7 +422,7 @@ class greenberg(agent):
 
 
 # Iocane Powder Agent: https://www.kaggle.com/group16/rps-roshambo-comp-iocaine-powder
-class iocaine(agent):
+class Iocaine(Agent):
 
 	def __init__(self):
 		self.iocaine = None
@@ -445,7 +467,7 @@ class iocaine(agent):
 			guess) if past stats are deviating from zero farther than the supplied
 			"best" guess so far."""
 		def __init__(self):
-			self.stats = iocaine.Stats()
+			self.stats = Iocaine.Stats()
 			self.lastguess = -1
 
 		def beat(self, i):
@@ -478,14 +500,14 @@ class iocaine(agent):
 			self.predict_frequency = self.predictor((len(self.ages), 2))
 			self.predict_fixed = self.predictor()
 			self.predict_random = self.predictor()
-			self.predict_meta = [iocaine.Predictor() for a in range(len(self.ages))]
-			self.stats = [iocaine.Stats() for i in range(2)]
+			self.predict_meta = [Iocaine.Predictor() for a in range(len(self.ages))]
+			self.stats = [Iocaine.Stats() for i in range(2)]
 			self.histories = [[], [], []]
 
 		def predictor(self, dims=None):
 			"""Returns a nested array of predictor objects, of the given dimensions."""
 			if dims: return [self.predictor(dims[1:]) for i in range(dims[0])]
-			self.predictors.append(iocaine.Predictor())
+			self.predictors.append(Iocaine.Predictor())
 			return self.predictors[-1]
 
 		def move(self, them):
@@ -511,7 +533,7 @@ class iocaine(agent):
 				# For each time window, there are three ways to recall a similar time:
 				# (0) by history of my moves; (1) their moves; or (2) pairs of moves.
 				# Set "best" to these three timeframes (zero if no matching time).
-				best = [iocaine.recall(age, hist) for hist in self.histories]
+				best = [Iocaine.recall(age, hist) for hist in self.histories]
 				for mimic in range(2):
 					# For each similar historical moment, there are two ways to anticipate
 					# the future: by mimicing what their move was; or mimicing what my
@@ -561,7 +583,7 @@ class iocaine(agent):
 
 
 # Rank 1 Agent From RPSContest
-class rank1(agent):
+class Rank1(Agent):
 	def __init__(self):
 		self.num_predictor = 27
 		self.len_rfind = [20]
@@ -585,10 +607,9 @@ class rank1(agent):
 		self.score_predictor = [0]*self.num_predictor
 		self.output = random.choice("RPS")
 		self.predictors = [self.output]*self.num_predictor
-		self.to_number = {'R': 0, 'P': 1, 'S': 2}
 	
 	def initial_step(self, obs, config):
-		return self.to_number[self.output]
+		return 'RPS'.index(self.output)
 	
 	def step(self, history, obs, config):
 		input = 'RPS'[history[-1]['competitorStep']]
@@ -690,14 +711,14 @@ class rank1(agent):
 		else:
 			predict = random.choice(self.your_his)
 		self.output = random.choice(self.not_lose[predict])
-		return self.to_number[self.output]
+		return 'RPS'.index(self.output)
 
 	def set_last_action(self, actions):
 		self.output = 'RPS'[actions[-1]]
 
 
 # Testing Please Ignore Agent from RPSContest
-class testing_please_ignore(agent):
+class Testing_please_ignore(Agent):
 
 	def __init__(self):
 
@@ -711,7 +732,6 @@ class testing_please_ignore(agent):
 		self.cede = {'P': 'R', 'S': 'P', 'R': 'S'}
 		self.rps = ['R', 'P', 'S']
 		self.wlt = {1: 0, -1: 1, 0: 2}
-		self.to_number = {'R': 0, 'P': 1, 'S': 2}
 
 		self.played_probs = defaultdict(lambda: 1)
 		self.dna_probs = [
@@ -745,7 +765,7 @@ class testing_please_ignore(agent):
 		return max(weighted_list, key=operator.itemgetter(1))[0]
 
 	def initial_step(self, obs, config):
-		return self.to_number[self.output]
+		return 'RPS'.index(self.output)
 
 	def step(self, history, obs, config):
 
@@ -845,16 +865,167 @@ class testing_please_ignore(agent):
 								self.answers[j*2+7][self.cscore[hand+self.dna[j*2+7]]]
 
 		self.output = self.counter_prob(probs)
-		return self.to_number[self.output]
+		return 'RPS'.index(self.output)
 		
 	def set_last_action(self, actions):
 		self.output = 'RPS'[actions[-1]]
 
 
-# Memory Patterns V7 Agent
-class memory_patterns(agent):
+# Dllu1 Agent from RPSContest (Rank 2): https://web.archive.org/web/20200812060710/http://www.rpscontest.com/entry/498002
+class Dllu1(Agent):
 
 	def __init__(self):
+		self.numPre = 30
+		self.numMeta = 6
+		self.limit = 8
+		self.beat={'R':'P','P':'S','S':'R'}
+		self.moves=['','','','']
+		self.pScore=[[5]*self.numPre] * 6
+		self.centrifuge={'RP':0,'PS':1,'SR':2,'PR':3,'SP':4,'RS':5,'RR':6,'PP':7,'SS':8}
+		self.centripete={'R':0,'P':1,'S':2}
+		self.soma = [0,0,0,0,0,0,0,0,0]
+		self.rps = [1,1,1]
+		self.a="RPS"
+		self.best = [0,0,0]
+		self.length=0
+		self.p=[random.choice("RPS")]*self.numPre
+		self.m=[random.choice("RPS")]*self.numMeta
+		self.mScore=[5,2,5,2,4,2]
+
+	def initial_step(self, obs, config):
+		return self.move()
+
+	def step(self, history, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
+		for i in range(self.numPre):
+			pp = self.p[i]
+			bpp = self.beat[pp]
+			bbpp = self.beat[bpp]
+			self.pScore[0][i]=0.9*self.pScore[0][i]+((input==pp)-(input==bbpp))*3
+			self.pScore[1][i]=0.9*self.pScore[1][i]+((self.output==pp)-(self.output==bbpp))*3
+			self.pScore[2][i]=0.87*self.pScore[2][i]+(input==pp)*3.3-(input==bpp)*1.2-(input==bbpp)*2.3
+			self.pScore[3][i]=0.87*self.pScore[3][i]+(self.output==pp)*3.3-(self.output==bpp)*1.2-(self.output==bbpp)*2.3
+			self.pScore[4][i]=(self.pScore[4][i]+(input==pp)*3)*(1-(input==bbpp))
+			self.pScore[5][i]=(self.pScore[5][i]+(self.output==pp)*3)*(1-(self.output==bbpp))
+		for i in range(self.numMeta):
+			self.mScore[i]=0.96*(self.mScore[i]+(input==self.m[i])-(input==self.beat[self.beat[self.m[i]]]))
+		self.soma[self.centrifuge[input+self.output]] +=1
+		self.rps[self.centripete[input]] +=1
+		self.moves[0]+=str(self.centrifuge[input+self.output])
+		self.moves[1]+=input
+		self.moves[2]+=self.output
+		self.length+=1
+		for y in range(3):
+			j=min([self.length,self.limit])
+			while j>=1 and not self.moves[y][self.length-j:self.length] in self.moves[y][0:self.length-1]:
+				j-=1
+			i = self.moves[y].rfind(self.moves[y][self.length-j:self.length],0,self.length-1)
+			self.p[0+2*y] = self.moves[1][j+i] 
+			self.p[1+2*y] = self.beat[self.moves[2][j+i]]
+		j=min([self.length,self.limit])
+		while j>=2 and not self.moves[0][self.length-j:self.length-1] in self.moves[0][0:self.length-2]:
+			j-=1
+		i = self.moves[0].rfind(self.moves[0][self.length-j:self.length-1],0,self.length-2)
+		if j+i>=self.length:
+			self.p[6] = self.p[7] = random.choice("RPS")
+		else:
+			self.p[6] = self.moves[1][j+i] 
+			self.p[7] = self.beat[self.moves[2][j+i]]
+			
+		self.best[0] = self.soma[self.centrifuge[self.output+'R']]*self.rps[0]/self.rps[self.centripete[self.output]]
+		self.best[1] = self.soma[self.centrifuge[self.output+'P']]*self.rps[1]/self.rps[self.centripete[self.output]]
+		self.best[2] = self.soma[self.centrifuge[self.output+'S']]*self.rps[2]/self.rps[self.centripete[self.output]]
+		self.p[8] = self.p[9] = self.a[self.best.index(max(self.best))]
+		
+		for i in range(10,self.numPre):
+			self.p[i]=self.beat[self.beat[self.p[i-10]]]
+			
+		for i in range(0,self.numMeta,2):
+			self.m[i]= self.p[self.pScore[i].index(max(self.pScore[i]))]
+			self.m[i+1]=self.beat[self.p[self.pScore[i+1].index(max(self.pScore[i+1]))]]
+	
+		return self.move()
+		
+	def move(self):
+		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
+		if max(self.mScore)<0.07 or random.randint(3,40)>self.length:
+			self.output=self.beat[random.choice("RPS")]
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, actions):
+		self.output = 'RPS'[actions[-1]]
+
+
+# Centrifugal Bumblepuppy: https://web.archive.org/web/20201021155550/http://rpscontest.com/entry/315005
+class Bumble(Agent):
+
+	def __init__(self):
+		self.numPre = 18
+		self.numMeta = 18
+		self.limit = 8
+		self.beat={'R':'P','P':'S','S':'R'}
+		self.moves=['','','']
+		self.pScore=[[3]*self.numPre] * 6
+		self.centrifuge={'RP':'a','PS':'b','SR':'c','PR':'d','SP':'e','RS':'f','RR':'g','PP':'h','SS':'i'}
+		self.length=0
+		self.p=[random.choice("RPS")]*self.numPre
+		self.m=[random.choice("RPS")]*self.numMeta
+		self.mScore=[3]*self.numMeta
+	
+	def initial_step(self, obs, config):
+		return self.move()
+
+	def step(self, history, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
+		for i in range(self.numPre):
+			self.pScore[0][i]=0.8*self.pScore[0][i]+((input==self.p[i])-(input==self.beat[self.beat[self.p[i]]]))*3
+			self.pScore[1][i]=0.8*self.pScore[1][i]+((self.output==self.p[i])-(self.output==self.beat[self.beat[self.p[i]]]))*3
+			self.pScore[2][i]=0.87*self.pScore[2][i]+(input==self.p[i])*3.3-(input==self.beat[self.p[i]])*0.9-(input==self.beat[self.beat[self.p[i]]])*3
+			self.pScore[3][i]=0.87*self.pScore[3][i]+(self.output==self.p[i])*3.3-(self.output==self.beat[self.p[i]])*0.9-(self.output==self.beat[self.beat[self.p[i]]])*3
+			self.pScore[4][i]=(self.pScore[4][i]+(input==self.p[i])*3)*(1-(input==self.beat[self.beat[self.p[i]]]))
+			self.pScore[5][i]=(self.pScore[5][i]+(self.output==self.p[i])*3)*(1-(self.output==self.beat[self.beat[self.p[i]]]))
+		for i in range(self.numMeta):
+			self.mScore[i]=(self.mScore[i]+(input==self.m[i]))*(1-(input==self.beat[self.beat[self.m[i]]]))
+		self.moves[0]+=self.centrifuge[input+self.output]
+		self.moves[1]+=input		
+		self.moves[2]+=self.output
+		self.length+=1
+		for y in range(3):
+			j=min([self.length,self.limit])
+			while j>=1 and not self.moves[y][self.length-j:self.length] in self.moves[y][0:self.length-1]:
+				j-=1
+			i = self.moves[y].rfind(self.moves[y][self.length-j:self.length],0,self.length-1)
+			self.p[0+2*y] = self.moves[1][j+i] 
+			self.p[1+2*y] = self.beat[self.moves[2][j+i]] 
+		
+		for i in range(6,6*3):
+			self.p[i]=self.beat[self.beat[self.p[i-6]]]
+			
+		for i in range(0,6,2):
+			self.m[i]=self.p[self.pScore[i].index(max(self.pScore[i]))]
+			self.m[i+1]=self.beat[self.p[self.pScore[i+1].index(max(self.pScore[i+1]))]]
+		for i in range(6,18):
+			self.m[i]=self.beat[self.beat[self.m[i-6]]]
+		
+		return self.move()
+	
+	def move(self):
+		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
+		if max(self.mScore)<0.13 or random.randint(3,40)>self.length:
+			self.output=self.beat[random.choice("RPS")]
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, actions):
+		self.output = 'RPS'[actions[-1]]
+
+
+# Memory Patterns V7 Agent
+class Memory_patterns(Agent):
+
+	def __init__(self, noise = False):
+
+		# random noise
+		self.noise = noise
 
 		# maximum steps in the pattern
 		self.steps_max = 6
@@ -917,7 +1088,7 @@ class memory_patterns(agent):
 		# if it's not first step, add opponent's last action to agent's current memory
 		# and reassess effectiveness of current memory patterns
 		if obs.step > 0:
-			self.current_memory.append(obs["lastOpponentAction"])
+			self.current_memory.append(obs.lastOpponentAction)
 			# previous step won or lost
 			self.results.append(self.get_step_result_for_my_agent(self.current_memory[-2], self.current_memory[-1]))
 			# if there is enough steps added to results for memery reassessment
@@ -954,7 +1125,7 @@ class memory_patterns(agent):
 					group["memory_patterns"].append(previous_pattern)
 				# if such pattern already exists
 				for action in previous_pattern["opp_next_actions"]:
-					if action["action"] == obs["lastOpponentAction"]:
+					if action["action"] == obs.lastOpponentAction:
 						action["amount"] += 1
 				# delete first two elements in current memory (actions of the oldest step in current memory)
 				del self.current_memory[:2]
@@ -972,7 +1143,7 @@ class memory_patterns(agent):
 								my_action_amount = action["amount"]
 								my_action = action["response"]
 		# if no action was found
-		if my_action == None:
+		if my_action == None or (self.noise and random.random() < 0.2):
 			my_action = random.randint(0, 2)
 		self.current_memory.append(my_action)
 		return my_action
@@ -984,109 +1155,135 @@ class memory_patterns(agent):
 # Hydra Net of Agents
 agents = {
 
-	'rank1': rank1(),
-	'testing_please_ignore': testing_please_ignore(),
-	'memory_patterns': memory_patterns(),
+	'dllu1': Dllu1(),
+	'rank1': Rank1(),
+	'testing_please_ignore': Testing_please_ignore(),
+	'centrifugal_bumblepuppy': Bumble(),
 
-	'iocaine': iocaine(),
-	'greenberg': greenberg(),
+	'iocaine': Iocaine(),
+	'greenberg': Greenberg(),
 
-	'deterministic_decision_tree': decision_tree(),
-	'random_decision_tree': decision_tree(True),
-
-	'random_transitison_tensor': transition_tensor(False, False),
-	'determenistic_transitison_tensor': transition_tensor(True, False),
-	'random_self_trans_tensor': transition_tensor(False, True),
-	'determenistic_self_trans_tensor': transition_tensor(True, True),
-	
-	'random_transitison_tensor_decay': transition_tensor(False, False, decay = 1.05),
-	'random_self_trans_tensor_decay': transition_tensor(False, True, decay = 1.05),
-	'determenistic_transitison_tensor_decay': transition_tensor(True, False, decay = 1.05),
-	'determenistic_self_trans_tensor_decay': transition_tensor(True, True, decay = 1.05),
-	
-	'determenistic_pattern_matching_decay_3': pattern_matching(3, True, False, decay = 1.001),
-	'determenistic_self_pattern_matching_decay_3': pattern_matching(3, True, True, decay = 1.001),
+	'decision_tree': Decision_tree(),
+	'memory_patterns': Memory_patterns()
 
 }
 
+# Inverse Agents
+inverse_agents = {
+
+	'inverse_dllu1': Dllu1(),
+	'inverse_rank1': Rank1(),
+	'inverse_testing_please_ignore': Testing_please_ignore(),
+	'inverse_centrifugal_bumblepuppy': Bumble(),
+
+	'inverse_iocaine': Iocaine(),
+	'inverse_greenberg': Greenberg(),
+
+	'inverse_decision_tree': Decision_tree(),
+	'inverse_memory_patterns': Memory_patterns(),
+}
+
+state = {agent: [1, 1] for agent in list(agents.keys()) + list(inverse_agents.keys())}
+previous = {}
 history = []
-bandit_state = {k: [1, 1] for k in agents.keys()}
-data = {}
 
 def hydra_agent(obs, config):
 
-	global history, bandit_state, data
-
-	start_time = time.time()
+	global previous
+	global history
+	global state
 	
-	# bandits' params
-	step_size = 3 # how much we increase a and b 
-	decay_rate = 1.05 # how much do we decay old historical data
+	# Hyperparameters
+	step_size = 3		# how much we increase alpha and beta 
+	decay_rate = 1.05 	# how much do we decay old historical data
 	
-	def log_step(step = None, history = None, agent = None, competitorStep = None, file = 'hydra_history.csv'):
-		history.append({'step': step, 'competitorStep': competitorStep, 'agent': agent})
-		if SAVE_DATA:
-			if file is not None:
-				pd.DataFrame(history).to_csv(file, index = False)
-		return step
-	
-	def update_competitor_step(history, competitorStep):
-		history[-1]['competitorStep'] = int(competitorStep)
-		return history
-
-	if obs.step > 0: 
-		history = update_competitor_step(history, obs.lastOpponentAction)
-	data[obs.step] = {}
+	if obs.step: history[-1]['competitorStep'] = obs.lastOpponentAction
+	previous[obs.step] = {}
 
 	for name, agent in agents.items():
 
-		# First move: initialize
-		if obs.step == 0:
-			agent_step = int(agent.initial_step(obs, config))
-		
-		# Run agent's move
-		else: 
+		# Adjust weights from last move
+		if obs.step > 0: 
 
-			prev_step = data[obs.step - 1][name]
+			prev_step = previous[obs.step - 1][name]
 
-			bandit_state[name][1] = (bandit_state[name][1] - 1) / decay_rate + 1
-			bandit_state[name][0] = (bandit_state[name][0] - 1) / decay_rate + 1
+			state[name][1] = (state[name][1] - 1) / decay_rate + 1
+			state[name][0] = (state[name][0] - 1) / decay_rate + 1
 			
 			if (history[-1]['competitorStep'] - prev_step) % 3 == 1:
-				bandit_state[name][1] += step_size
+				state[name][1] += step_size
 			elif (history[-1]['competitorStep'] - prev_step) % 3 == 2:
-				bandit_state[name][0] += step_size
+				state[name][0] += step_size
 			else:
-				bandit_state[name][0] += step_size / 2
-				bandit_state[name][1] += step_size / 2
+				state[name][0] += step_size / 2
+				state[name][1] += step_size / 2
 
-			agent_step = int(agent.step(history, obs, config))
-
-		data[obs.step][name] = agent_step
-
-	# we can use it for analysis later
-	if SAVE_DATA:
-		with open('hydra_data.json', 'w') as outfile:
-			json.dump(bandit_state, outfile)
+		# Get agent action
+		agent_step = agent.get_action(history, obs, config)
+		previous[obs.step][name] = agent_step
 	
+	inverse_history = []
+	for packet in history:
+		inverse_history.append({
+			'step': packet['competitorStep'],
+			'competitorStep': packet['step']
+		})
+	
+	inverse_obs = lambda: None
+	inverse_obs.lastOpponentAction = history[-1]['step'] if obs.step else None
+	inverse_obs.reward = -obs.reward
+	inverse_obs.remainingOverageTime = obs.remainingOverageTime
+	inverse_obs.step = obs.step
+
+	for name, agent in inverse_agents.items():
+
+		# Adjust weights from last move
+		if obs.step > 0: 
+
+			prev_step = previous[obs.step - 1][name]
+
+			state[name][1] = (state[name][1] - 1) / decay_rate + 1
+			state[name][0] = (state[name][0] - 1) / decay_rate + 1
+			
+			if (history[-1]['competitorStep'] - prev_step) % 3 == 1:
+				state[name][1] += step_size
+			elif (history[-1]['competitorStep'] - prev_step) % 3 == 2:
+				state[name][0] += step_size
+			else:
+				state[name][0] += step_size / 2
+				state[name][1] += step_size / 2
+			
+			actions = [packet['competitorStep'] for packet in history]
+			agent.set_last_action(actions)
+
+		# Get agent action
+		agent_step = agent.get_action(inverse_history, inverse_obs, config)
+		previous[obs.step][name] = (agent_step + 1) % 3
+
 	# generate random number from Beta distribution for each agent and select the most lucky one
-	best_proba = float('-inf')
+	best_prob = float('-inf')
 	best_agent = None
-	for k in agents.keys():
-		proba = np.random.beta(bandit_state[k][0], bandit_state[k][1])
-		if proba > best_proba:
-			best_proba = proba
+	for k in state.keys():
+		prob = np.random.beta(state[k][0], state[k][1])
+		if prob > best_prob:
+			best_prob = prob
 			best_agent = k
 
-	action = data[obs.step][best_agent]
+	action = previous[obs.step][best_agent]
+	history.append({'step': action, 'agent': best_agent})
 
-	last_actions = [packet['step'] for packet in history] + [action]
-	for name in agents.keys():
-		agents[name].set_last_action(last_actions)
+	last_actions = [packet['step'] for packet in history]
+	for agent in agents.values():
+		agent.set_last_action(last_actions)
 
-	if OUTPUT:
-		score = round(best_proba, 3)
+	if PRINT_OUTPUT:
+		score = round(best_prob, 3)
 		pad = ' ' * (5 - len(str(score)))
-		print(f'Score: {score}{pad}  Agent: {best_agent}')
+		print(f'Score: {score}{pad} -- {best_agent} ')
 
-	return log_step(action, history, best_agent)
+	if SAVE_DATA:
+		pd.DataFrame(history).to_csv('hydra_state.csv', index = False)
+		with open('hydra_data.json', 'w') as file:
+			json.dump(state, file)
+
+	return action
