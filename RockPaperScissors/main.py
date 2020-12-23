@@ -9,14 +9,14 @@ import random, time
 agents = [
 
 	# Public Bots
-	'public/memory.py',
+	# 'public/memory.py',
 	'public/decision_tree.py',
 	'public/decision_tree_2.py',
 	'public/rfind.py',
 
 	# Old Contest Archived Bots
-	'archive/iocaine.py',
-	'archive/greenberg.py',
+	# 'archive/iocaine.py',
+	# 'archive/greenberg.py',
 	'archive/testing.py',
 	'archive/rank1.py',
 	'archive/dllu1.py',
@@ -25,6 +25,7 @@ agents = [
 
 	# Flagship
 	'hydra.py',
+	'old_hydra.py'
 
 ]
 
@@ -63,7 +64,7 @@ def new_game(player1, player2):
 def main(pool = agents, n = 2):
 
 	data = { name: {
-		'name': name, 'score': 0, 'win%': 0,
+		'agent': name, 'score': 0, 'win%': 0,
 		'wins': 0, 'draws': 0, 'losses': 0,
 		'games': 0
 	} for name in pool }
@@ -100,20 +101,24 @@ def main(pool = agents, n = 2):
 			data[player]['win%'] = round(data[player]['wins'] / data[player]['games'], 3)
 	
 	for player in pool:
-		data[player]['score'] = data[player]['wins'] + (data[player]['draws'] / 2) - data[player]['losses']
+		data[player]['score'] = data[player]['wins'] - data[player]['losses'] + (data[player]['draws'] / 2)
 		data[player]['score'] = round(data[player]['score'], 3)
 
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
 	with open('leaderboard/leaderboard.csv', 'w') as file:
-		file.write(f"rank,{','.join(data[pool[0]].keys())}")
+		file.write(f"{','.join(data[pool[0]].keys())}")
 		for rank, name in enumerate(pool):
-			output = f'\n{rank + 1}'
+			output = f'\n'#{rank + 1}'
 			for item in data[name]:
-				output += f',{data[name][item]}'
+				output += f'{data[name][item]},'
+			output = output[:-1]
 			file.write(output)
 
 	with open('leaderboard/leaderboard_table.txt', 'w') as file:
-		file.write(str(from_csv(open('leaderboard/leaderboard.csv'))))
+		table = from_csv(open('leaderboard/leaderboard.csv'))
+		table.align = 'l'
+		string = table.get_string().replace('|', ' ').replace('+', ' ')
+		file.write(string)
 
 def play(agent1, agent2):
 
@@ -124,7 +129,7 @@ def play(agent1, agent2):
 	rewards = json['rewards']
 
 	print(f'{agent1}: {rewards[0]}  vs  {agent2}: {rewards[1]}')
- 
+
 if __name__ == '__main__':
-	play('hydra.py', 'archive/iocaine.py')
-	# main(pool = ['archive/bumble.py', 'archive/dllu1.py', 'archive/meta_fix.py', 'archive/rank1.py', 'archive/testing.py', 'public/rfind.py', 'public/memory.py'], n = 4)
+	# play('hydra.py', 'archive/bumble.py')
+	main()

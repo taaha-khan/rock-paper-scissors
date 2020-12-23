@@ -1,4 +1,5 @@
 # = * = * = * = * = * = * 
+import random
 
 max_limit = 23  # can be modified
 add_rotations = True
@@ -20,6 +21,7 @@ beat = {'R':'P', 'P':'S', 'S':'R'}
 dna =  {'RP':0, 'PS':1, 'SR':2,
 		'PR':3, 'SP':4, 'RS':5,
 		'RR':6, 'PP':7, 'SS':8}
+not_lose = {'R': 'PPR', 'P': 'SSP', 'S': 'RRS'}
 
 p = ["P"]*numPre
 m = ["P"]*numMeta
@@ -106,5 +108,5 @@ def myagent(observation, configuration):
 	if threat > 0.4:
 		# ah take this!
 		output = beat[beat[output]]
-
+	
 	return {'R':0, 'P':1, 'S':2}[output]

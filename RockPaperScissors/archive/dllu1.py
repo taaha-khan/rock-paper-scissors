@@ -66,7 +66,7 @@ else:
 		m[i]=       p[pScore[i  ].index(max(pScore[i  ]))]
 		m[i+1]=beat[p[pScore[i+1].index(max(pScore[i+1]))]]
 output = beat[m[mScore.index(max(mScore))]]
-if max(mScore)<0.07 or random.randint(3,40)>length:
+if max(mScore)<3+random.random() or random.randint(3,40)>length or random.random() < 0.5:
 	output=beat[random.choice("RPS")]
 """, '<string>', 'exec')
 
