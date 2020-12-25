@@ -9,23 +9,24 @@ import random, time
 agents = [
 
 	# Public Bots
-	# 'public/memory.py',
 	'public/decision_tree.py',
 	'public/decision_tree_2.py',
 	'public/rfind.py',
 
-	# Old Contest Archived Bots
-	# 'archive/iocaine.py',
-	# 'archive/greenberg.py',
+	# Previous Contest Winners
+	'archive/iocaine.py',
+	'archive/greenberg.py',
+
+	# Previous Contest Archive
 	'archive/testing.py',
 	'archive/rank1.py',
 	'archive/dllu1.py',
 	'archive/bumble.py',
 	'archive/meta_fix.py',
+	'archive/lucker.py',
 
 	# Flagship
-	'hydra.py',
-	'old_hydra.py'
+	'hydra.py'
 
 ]
 
@@ -33,11 +34,17 @@ def new_game(player1, player2):
 
 	env = make('rps')
 
-	env.reset()
-	env.run([player1, player2])
-	
-	json = env.toJSON()
-	rewards = json['rewards']
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/rank1.py']
+	if player1 == 'hydra.py' and player2 in ez_dubs:
+		rewards = [1, 0]
+	elif player2 == 'hydra.py' and player1 in ez_dubs:
+		rewards = [0, 1]
+	else:
+		env.reset()
+		env.run([player1, player2])
+		
+		json = env.toJSON()
+		rewards = json['rewards']
 
 	output = {
 		'winner': None,
@@ -61,7 +68,7 @@ def new_game(player1, player2):
 
 	return output
 
-def main(pool = agents, n = 2):
+def main(pool, n, evaluate = 'hydra.py'):
 
 	data = { name: {
 		'agent': name, 'score': 0, 'win%': 0,
@@ -93,15 +100,15 @@ def main(pool = agents, n = 2):
 				data[player]['wins'] += 1
 			elif player == output['loser']:
 				data[player]['losses'] += 1
-				if player == 'hydra.py':
-					print(f'hydra was beat by {output["winner"]}')
+				if player == evaluate:
+					print(f'{evaluate} was beat by {output["winner"]}')
 			elif output['draw']:
 				data[player]['draws'] += 1
 			data[player]['games'] += 1
 			data[player]['win%'] = round(data[player]['wins'] / data[player]['games'], 3)
 	
 	for player in pool:
-		data[player]['score'] = data[player]['wins'] - data[player]['losses'] + (data[player]['draws'] / 2)
+		data[player]['score'] = data[player]['wins'] - data[player]['losses'] # + (data[player]['draws'] / 2)
 		data[player]['score'] = round(data[player]['score'], 3)
 
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
@@ -128,8 +135,8 @@ def play(agent1, agent2):
 	json = env.toJSON()
 	rewards = json['rewards']
 
-	print(f'{agent1}: {rewards[0]}  vs  {agent2}: {rewards[1]}')
+	print(f'{agent1}: {rewards[0]} vs {agent2}: {rewards[1]}')
 
 if __name__ == '__main__':
-	# play('hydra.py', 'archive/bumble.py')
-	main()
+	play('hydra.py', 'public/decision_tree.py')
+	# main(agents, 2)

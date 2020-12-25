@@ -1,9 +1,27 @@
 
 import time
+import os
 import random
 import numpy as np
 from typing import List, Dict
 from sklearn.tree import DecisionTreeClassifier
+
+def random_agent(observation, configuration):
+	return random.randint(0, configuration.signs-1)
+
+def rock_agent(observation, configuration):
+	return 0
+
+def paper_agent(observation, configuration):
+	return 1
+
+def scissors_agent(observation, configuration):
+	return 2
+
+def sequential_agent(observation, configuration):
+	return observation.step % configuration.signs
+
+
 
 def get_winstats(history) -> Dict[str,int]:
 	total = len(history['action'])
@@ -11,8 +29,8 @@ def get_winstats(history) -> Dict[str,int]:
 	draw = 0
 	loss = 0 
 	for n in range(total):
-		if history['action'][n] == history['opponent'][n] + 1: wins +=  1
-		elif history['action'][n] == history['opponent'][n]: draw +=  1
+		if   history['action'][n] == history['opponent'][n] + 1: wins +=  1
+		elif history['action'][n] == history['opponent'][n]:     draw +=  1
 		elif history['action'][n] == history['opponent'][n] - 1: loss +=  1
 	return { "wins": wins, "draw": draw, "loss": loss }
 
@@ -20,6 +38,7 @@ def get_winrate(history):
 	winstats = get_winstats(history)
 	winrate  = winstats['wins'] / (winstats['wins'] + winstats['loss']) if (winstats['wins'] + winstats['loss']) else 0
 	return winrate
+	
 	
 # Initialize starting history
 history = {
@@ -40,18 +59,20 @@ def get_statistics(values) -> List[float]:
 		for n in [0,1,2]
 	]
 
-def decision_tree_agent(observation, configuration, window=10, stages=3, random_freq=0.25, max_samples=1000, warmup_period=25):    
-	
+
+# observation   =  {'step': 1, 'lastOpponentAction': 1}
+# configuration =  {'episodeSteps': 10, 'agentTimeout': 60, 'actTimeout': 1, 'runTimeout': 1200, 'isProduction': False, 'signs': 3}
+def decision_tree_agent(observation, configuration, window=5, stages=2, random_freq=0.1, warmup_period=10, max_samples=1000):    
 	global history
-	warmup_period = warmup_period  # if os.environ.get('KAGGLE_KERNEL_RUN_TYPE','') != 'Interactive' else 0
-	models = [ None ] + [ DecisionTreeClassifier() ] * stages
+	warmup_period   = warmup_period  # if os.environ.get('KAGGLE_KERNEL_RUN_TYPE','') != 'Interactive' else 0
+	models          = [ None ] + [ DecisionTreeClassifier() ] * stages
 	
-	time_start = time.perf_counter()
-	actions = list(range(configuration.signs))  # [0,1,2]
+	time_start      = time.perf_counter()
+	actions         = list(range(configuration.signs))  # [0,1,2]
 	
-	step = observation.step
-	last_action = history['action'][-1] if len(history['action']) else 2
-	opponent_action = observation.lastOpponentAction if observation.step > 0 else 2
+	step            = observation.step
+	last_action     = history['action'][-1]          if len(history['action']) else 2
+	opponent_action = observation.lastOpponentAction if observation.step > 0   else 2
 		
 	if observation.step > 0:
 		history['opponent'].append(opponent_action)
@@ -71,9 +92,12 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 		# TODO: create windowed history
 		try:
 			n_start = max(1, len(history['opponent']) - window - max_samples) 
+			# print('stats: ', { key: get_statistics(history[key]) for key in history.keys() })
 			if stages >= 1:
 				X = np.stack([
 					np.array([
+						# get_statistics(history['action'][:n+window]),
+						# get_statistics(history['opponent'][:n-1+window]),
 						history['action'][n:n+window], 
 						history['opponent'][n:n+window]
 					]).flatten()
@@ -84,6 +108,8 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 					for n in range(n_start,len(history['opponent'])-window-warmup_period) 
 				])  
 				Z = np.array([
+					# get_statistics(history['action']),
+					# get_statistics(history['opponent']),
 					history['action'][-window+1:] + [ last_action ], 
 					history['opponent'][-window:] 
 				]).flatten().reshape(1, -1)
@@ -95,6 +121,9 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 				# Now retrain including prediction history
 				X = np.stack([
 					np.array([
+						# get_statistics(history['action'][:n+window]),
+						# get_statistics(history['prediction1'][:n+window]),
+						# get_statistics(history['opponent'][:n-1+window]),
 						history['action'][n:n+window], 
 						history['prediction1'][n:n+window],
 						history['opponent'][n:n+window],
@@ -106,6 +135,9 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 					for n in range(n_start,len(history['opponent'])-window-warmup_period) 
 				])  
 				Z = np.array([
+					# get_statistics(history['action']),
+					# get_statistics(history['prediction1']),
+					# get_statistics(history['opponent']),
 					history['action'][-window+1:]      + [ last_action ], 
 					history['prediction1'][-window+1:] + [ prediction1 ],
 					history['opponent'][-window:] 
@@ -118,6 +150,10 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 				# Now retrain including prediction history
 				X = np.stack([
 					np.array([
+						# get_statistics(history['action'][:n+window]),
+						# get_statistics(history['prediction1'][:n+window]),
+						# get_statistics(history['prediction2'][:n+window]),
+						# get_statistics(history['opponent'][:n-1+window]),
 						history['action'][n:n+window], 
 						history['prediction1'][n:n+window],
 						history['prediction2'][n:n+window],
@@ -130,6 +166,10 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 					for n in range(n_start,len(history['opponent'])-window-warmup_period) 
 				])  
 				Z = np.array([
+					# get_statistics(history['action']),
+					# get_statistics(history['prediction1']),
+					# get_statistics(history['prediction2']),
+					# get_statistics(history['opponent']),
 					history['action'][-window+1:]      + [ last_action ], 
 					history['prediction1'][-window+1:] + [ prediction1 ],
 					history['prediction2'][-window+1:] + [ prediction2 ],
@@ -140,15 +180,21 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 				expected = prediction3 = models[3].predict(Z)[0]
 		
 		except Exception as exception:
-			# print(exception)
 			pass
 					
 	# During the warmup period, play random to get a feel for the opponent 
 	if (observation.step <= max(warmup_period,window)):
-		action = random.randrange(3)
+		actor  = 'warmup'
+		action = random_agent(observation, configuration)    
 	
+	# Play a purely random move occasionally, which will hopefully distort any opponent statistics
+	elif (random.random() <= random_freq):
+		actor  = 'random'
+		action = random_agent(observation, configuration)
+		
 	# But mostly use DecisionTreeClassifier to predict the next move
 	else:
+		actor  = 'DecisionTree'
 		action = (expected + 1) % configuration.signs
 	
 	# Persist state
@@ -160,7 +206,8 @@ def decision_tree_agent(observation, configuration, window=10, stages=3, random_
 	if observation.step == 0:  # keep arrays equal length
 		history['opponent'].append(random.randint(0, 2))
 
+
 	# Print debug information
-	# time_taken = time.perf_counter() - time_start
-	# print(f'{1000*time_taken:3.0f}ms | {step:4d} | opp = {opponent_action} | exp = {expected} | act = {action} | {100*winrate:5.1f}% {winstats}')    
+	time_taken = time.perf_counter() - time_start
+	# print(f'{1000*time_taken:3.0f}ms | {step:4d} | opp = {opponent_action} | exp = {expected} | act = {action} | {actor:7s} | {100*winrate:5.1f}% {winstats}')    
 	return int(action)
