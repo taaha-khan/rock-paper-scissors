@@ -1,10 +1,7 @@
 
-from kaggle_environments.envs.rps.agents import *
-from kaggle_environments import make
-
 import concurrent.futures as processor
+from kaggle_environments import make
 from prettytable import from_csv
-import random, time
 
 agents = [
 
@@ -14,12 +11,12 @@ agents = [
 	'public/rfind.py',
 
 	# Previous Contest Winners
-	'archive/iocaine.py',
-	'archive/greenberg.py',
+	# 'archive/iocaine.py',
+	# 'archive/greenberg.py',
 
 	# Previous Contest Archive
 	'archive/testing.py',
-	'archive/rank1.py',
+	'archive/IO2.py',
 	'archive/dllu1.py',
 	'archive/bumble.py',
 	'archive/meta_fix.py',
@@ -30,16 +27,20 @@ agents = [
 
 ]
 
+archive = [agent for agent in agents if agent[:8] == 'archive/']
+public = [agent for agent in agents if agent[:7] == 'public/']
+
 def new_game(player1, player2):
 
 	env = make('rps')
 
-	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/rank1.py']
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/IO2.py', 'archive/bumble.py']
 	if player1 == 'hydra.py' and player2 in ez_dubs:
 		rewards = [1, 0]
 	elif player2 == 'hydra.py' and player1 in ez_dubs:
 		rewards = [0, 1]
 	else:
+		
 		env.reset()
 		env.run([player1, player2])
 		
@@ -108,7 +109,7 @@ def main(pool, n, evaluate = 'hydra.py'):
 			data[player]['win%'] = round(data[player]['wins'] / data[player]['games'], 3)
 	
 	for player in pool:
-		data[player]['score'] = data[player]['wins'] - data[player]['losses'] # + (data[player]['draws'] / 2)
+		data[player]['score'] = data[player]['wins'] - data[player]['losses'] + (data[player]['draws'] / 2)
 		data[player]['score'] = round(data[player]['score'], 3)
 
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
@@ -138,5 +139,5 @@ def play(agent1, agent2):
 	print(f'{agent1}: {rewards[0]} vs {agent2}: {rewards[1]}')
 
 if __name__ == '__main__':
-	play('hydra.py', 'public/decision_tree.py')
-	# main(agents, 2)
+	# play('hydra.py', 'archive/dllu1.py')
+	main(agents, 2)

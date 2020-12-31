@@ -1,15 +1,14 @@
  --------------------------- ------- ------- ------ ------- -------- ------- 
   agent                       score   win%    wins   draws   losses   games  
  --------------------------- ------- ------- ------ ------- -------- ------- 
-  hydra.py                    31.5    0.725   29     9       2        40     
-  archive/bumble.py           20.0    0.45    18     16      6        40     
-  archive/dllu1.py            19.0    0.4     16     18      6        40     
-  public/decision_tree.py     14.5    0.25    10     23      7        40     
-  public/decision_tree_2.py   13.0    0.175   7      26      7        40     
-  public/rfind.py             10.0    0.25    10     20      10       40     
-  archive/meta_fix.py         5.0     0.225   9      18      13       40     
-  archive/rank1.py            2.0     0.225   9      16      15       40     
-  archive/testing.py          -1.0    0.225   9      14      17       40     
-  archive/greenberg.py        -4.0    0.15    6      16      18       40     
-  archive/iocaine.py          -14.0   0.025   1      16      23       40     
+  hydra.py                    27      0.778   28     7       1        36     
+  archive/lucker.py           15      0.5     18     15      3        36     
+  public/rfind.py             2       0.417   15     8       13       36     
+  archive/meta_fix.py         1       0.278   10     17      9        36     
+  archive/bumble.py           -1      0.194   7      21      8        36     
+  public/decision_tree_2.py   -3      0.278   10     13      13       36     
+  public/decision_tree.py     -5      0.139   5      21      10       36     
+  archive/dllu1.py            -7      0.194   7      15      14       36     
+  archive/testing.py          -13     0.111   4      15      17       36     
+  archive/IO2.py              -16     0.083   3      14      19       36     
  --------------------------- ------- ------- ------ ------- -------- ------- 
