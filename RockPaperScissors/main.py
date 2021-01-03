@@ -139,5 +139,5 @@ def play(agent1, agent2):
 	print(f'{agent1}: {rewards[0]} vs {agent2}: {rewards[1]}')
 
 if __name__ == '__main__':
-	# play('hydra.py', 'archive/dllu1.py')
-	main(agents, 2)
+	play('hydra.py', 'archive/IO2.py')
+	# main(agents, 2)

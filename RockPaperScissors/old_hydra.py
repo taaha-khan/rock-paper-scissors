@@ -25,11 +25,11 @@ PRINT_OUTPUT = True
 class Agent():
 	''' Base class for all agents '''
 
-	def initial_step(self, obs = None, config = None):
+	def initial_step(self, obs, config):
 		''' Move to play on initial step '''
 		return self.step([], obs, config)
 	
-	def step(self, history, obs = None, config = None):
+	def step(self, history, obs, config):
 		''' Next moves with historic data '''
 		return random.randrange(3)
 	
@@ -497,7 +497,7 @@ class Iocaine(Agent):
 
 
 # IO2_fightinguuu Agent From RPSContest: https://web.archive.org/web/20200812062252/http://www.rpscontest.com/entry/885001
-class Rank1(Agent):
+class IO2(Agent):
 	def __init__(self):
 		self.num_predictor = 27
 		self.len_rfind = [20]
@@ -1452,7 +1452,7 @@ class Lucker(Agent):
 AGENTS = {
 
 	'dllu1': Dllu1(),
-	'rank1': Rank1(),
+	'IO2': IO2(),
 
 	'meta-fix': MetaFix(),
 	'rfind': RFind(),
@@ -1470,7 +1470,7 @@ AGENTS = {
 	# ------------------------------------
 
 	'inverse-dllu1': Dllu1(),
-	'inverse-rank1': Rank1(),
+	'inverse-IO2': IO2(),
 
 	'inverse-meta-fix': MetaFix(),
 	'inverse-rfind': RFind(),
@@ -1504,33 +1504,23 @@ class Hydra:
 			'average-beta': [0]
 		} for agent in self.agents}
 
-		self.meta_strategies = {key: {'weight': 1} for key in self.state[self.agents[0]].keys()}
+		self.meta_strategies = list(self.state[self.agents[0]].keys())
 
 		self.previous = []
 		self.history = []
 
 		self.decay_rate = 1.05
-		self.epsilon = 0.1
 		self.step_size = 3
 
 		self.best_agent = None
 		self.action = 0
 
-		self.scores = None
+		self.scores = defaultdict(lambda: 0)
 	
 	def step(self, obs):
 
 		if obs.step > 0:
 			self.history[-1]['competitorStep'] = obs.lastOpponentAction
-			
-			for strat in self.meta_strategies.keys():
-				last_action = self.meta_strategies[strat]['move']
-				
-				if (obs.lastOpponentAction - last_action) % 3 == 2:
-					self.meta_strategies[strat]['weight'] *= 1.05
-				elif (obs.lastOpponentAction - last_action) % 3 == 1:
-					self.meta_strategies[strat]['weight'] *= 0.95
-				
 		self.previous.append({})
 
 		inverse_history = [{
@@ -1582,8 +1572,7 @@ class Hydra:
 
 				if name[:8] == 'inverse-':
 					agent.set_last_action(inverse_actions)
-				else:
-					agent.set_last_action(last_actions)
+				else: agent.set_last_action(last_actions)
 
 			if name[:8] == 'inverse-':
 				agent_step = (agent.get_action(inverse_history, inverse_obs, self.config) + 1) % 3
@@ -1591,16 +1580,12 @@ class Hydra:
 			
 			self.previous[obs.step][name] = agent_step
 
-		self.scores = {agent: 0 for agent in self.agents}
+		self.scores = defaultdict(lambda: 0)
 
 		for strat in self.meta_strategies:
 			sorted_agents = sorted(self.agents, key = lambda a: self.state[a][strat][-1])
-
 			for agent in self.agents:
 				self.scores[agent] += sorted_agents.index(agent) - (len(self.agents) / 2)
-
-			self.meta_strategies[strat]['move'] = self.previous[obs.step][sorted_agents[-1]]
-			self.meta_strategies[strat]['agent'] = sorted_agents[-1]
 
 		self.best_agent = max(self.scores, key = self.scores.get)
 		self.action = self.previous[obs.step][self.best_agent]
@@ -1618,7 +1603,7 @@ class Hydra:
 
 		return self.action
 
-def HYDRA_AGENT(obs, config):
+def AGENT(obs, config):
 	global agent
 	if obs.step == 0:
 		agent = Hydra(config)
