@@ -178,8 +178,8 @@ else:
 		metapredictors[i] = beat[metapredictors[i-6]]
 	
 	predict = metapredictors[metascore.index(max(metascore))]
-	# output = beat[predict]
-	output = random.choice(not_lose[predict])
+	output = beat[predict]
+	# output = random.choice(not_lose[predict])
 """, '<string>', 'exec')
 
 runner = {}

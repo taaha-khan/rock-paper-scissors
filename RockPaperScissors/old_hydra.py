@@ -1487,6 +1487,7 @@ AGENTS = {
 
 }
 
+
 class Hydra:
 
 	def __init__(self, config):
@@ -1576,7 +1577,8 @@ class Hydra:
 
 			if name[:8] == 'inverse-':
 				agent_step = (agent.get_action(inverse_history, inverse_obs, self.config) + 1) % 3
-			else: agent_step = agent.get_action(self.history, obs, self.config)
+			else: 
+				agent_step = agent.get_action(self.history, obs, self.config)
 			
 			self.previous[obs.step][name] = agent_step
 
@@ -1591,8 +1593,9 @@ class Hydra:
 		self.action = self.previous[obs.step][self.best_agent]
 		
 		# Override action here
-		if max(self.scores.values()) < 40:
+		if max(self.scores.values()) < 150 or random.random() < 0.1:
 			self.action = random.randrange(3)
+			self.best_agent = 'random'
 
 		self.history.append({'step': self.action, 'agent': self.best_agent})
 		

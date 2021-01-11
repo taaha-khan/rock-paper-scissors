@@ -28,13 +28,13 @@ agents = [
 ]
 
 archive = [agent for agent in agents if agent[:8] == 'archive/']
-public = [agent for agent in agents if agent[:7] == 'public/']
+public  = [agent for agent in agents if agent[:7] == 'public/']
 
 def new_game(player1, player2):
 
 	env = make('rps')
 
-	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/IO2.py', 'archive/bumble.py']
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/IO2.py', 'archive/iocaine.py']
 	if player1 == 'hydra.py' and player2 in ez_dubs:
 		rewards = [1, 0]
 	elif player2 == 'hydra.py' and player1 in ez_dubs:
@@ -91,8 +91,7 @@ def main(pool, n, evaluate = 'hydra.py'):
 		print(f'{len(games)} games scheduled')
 
 		for game in processor.as_completed(games):
-			output = game.result()
-			outputs.append(output)
+			output = game.result(); outputs.append(output)
 			print(f"{len(outputs)} games completed: {output['players'][0]} vs {output['players'][1]}")
 
 	for output in outputs:
@@ -109,7 +108,7 @@ def main(pool, n, evaluate = 'hydra.py'):
 			data[player]['win%'] = round(data[player]['wins'] / data[player]['games'], 3)
 	
 	for player in pool:
-		data[player]['score'] = data[player]['wins'] - data[player]['losses'] + (data[player]['draws'] / 2)
+		data[player]['score'] = data[player]['wins'] - data[player]['losses'] # + (data[player]['draws'] / 2)
 		data[player]['score'] = round(data[player]['score'], 3)
 
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
@@ -136,8 +135,8 @@ def play(agent1, agent2):
 	json = env.toJSON()
 	rewards = json['rewards']
 
-	print(f'{agent1}: {rewards[0]} vs {agent2}: {rewards[1]}')
+	print(f'{agent1}: {int(rewards[0])} vs {agent2}: {int(rewards[1])}')
 
 if __name__ == '__main__':
-	play('hydra.py', 'archive/IO2.py')
+	play('hydra.py', 'archive/bumble.py')
 	# main(agents, 2)
