@@ -25,11 +25,11 @@ PRINT_OUTPUT = True
 class Agent():
 	''' Base class for all agents '''
 
-	def initial_step(self, obs, config):
+	def initial_step(self, obs = None, config = None):
 		''' Move to play on initial step '''
-		return self.step([], obs, config)
+		return random.randrange(3)
 	
-	def step(self, history, obs, config):
+	def step(self, history, obs = None, config = None):
 		''' Next moves with historic data '''
 		return random.randrange(3)
 	
@@ -497,7 +497,7 @@ class Iocaine(Agent):
 
 
 # IO2_fightinguuu Agent From RPSContest: https://web.archive.org/web/20200812062252/http://www.rpscontest.com/entry/885001
-class IO2(Agent):
+class Rank1(Agent):
 	def __init__(self):
 		self.num_predictor = 27
 		self.len_rfind = [20]
@@ -863,7 +863,7 @@ class Dllu1(Agent):
 		
 	def move(self):
 		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
-		if max(self.mScore)<3+random.random() or random.randint(3,40)>self.length:# or random.random() < 0.5:
+		if max(self.mScore)<3+random.random() or random.randint(3,40)>self.length or random.random() < 0.5:
 			self.output=self.beat[random.choice("RPS")]
 		return 'RPS'.index(self.output)
 	
@@ -1260,203 +1260,13 @@ class RFind(Agent):
 		self.output = 'RPS'[actions[-1]]
 
 
-# Lucker Agent from RPSContest: https://web.archive.org/web/20191201105926/http://www.rpscontest.com/entry/892001
-class Lucker(Agent):
-	def __init__(self):
-		self.num_predictors =27
-		self.num_meta= 18
-		self.len_rfind = [20]
-		self.limit = [10,20,60]
-		self.beat = { "P":"S" , "R":"P" , "S":"R" }
-		self.not_lose = { "R":"PR", "P":"SP", "S":"RS" } 
-		self.your_his =""
-		self.my_his = ""
-		self.both_his=""
-		self.both_his2=""
-		self.length =0
-		self.score1=[3]*self.num_predictors
-		self.score2=[3]*self.num_predictors
-		self.score3=[3]*self.num_predictors
-		self.score4=[3]*self.num_predictors
-		self.score5=[3]*self.num_predictors
-		self.score6=[3]*self.num_predictors
-		self.metascore=[3]*self.num_meta
-		self.temp1 = { "PP":"1","PR":"2","PS":"3",
-				"RP":"4","RR":"5","RS":"6",
-				"SP":"7","SR":"8","SS":"9"}
-		self.temp2 = { "1":"PP","2":"PR","3":"PS",
-					"4":"RP","5":"RR","6":"RS",
-					"7":"SP","8":"SR","9":"SS"} 
-		self.who_win = { "PP": 0, "PR":1 , "PS":-1,
-					"RP": -1,"RR":0, "RS":1,
-					"SP": 1, "SR":-1, "SS":0}
-		self.index = { "P":0, "R":1, "S":2 }
-		self.chance =[0]*self.num_predictors
-		self.chance2 =[0]*self.num_predictors
-		self.output = random.choice("RPS")
-		self.predictors = [self.output]*self.num_predictors
-		self.metapredictors = [self.output]*self.num_meta
-
-	def initial_step(self, obs, config):
-		return 'RPS'.index(self.output)
-
-	def step(self, history, obs, config):
-		input = 'RPS'[obs.lastOpponentAction]
-		#calculate score
-		for i in range(self.num_predictors):
-			#meta 1
-			self.score1[i]*=0.8
-			if input==self.predictors[i]:
-				self.score1[i]+=3
-			else:
-				self.score1[i]-=3
-			#meta 2
-			if input==self.predictors[i]:
-				self.score2[i]+=3
-			else:
-				self.score2[i]=0
-			#meta 3
-			self.score3[i]*=0.8
-			if self.output==self.predictors[i]:
-				self.score3[i]+=3
-			else:
-				self.score3[i]-=3
-			#meta 4
-			if self.output==self.predictors[i]:
-				self.score4[i]+=3
-			else:
-				self.score4[i]=0
-			#meta 5
-			self.score5[i]*=0.8
-			if input==self.predictors[i]:
-				self.score5[i]+=3
-			else:
-				if self.chance[i]==1:
-					self.chance[i]=0
-					self.score5[i]-=3
-				else:
-					self.chance[i]=1
-					self.score5[i]=0
-			#meta 6
-			self.score6[i]*=0.8
-			if self.output==self.predictors[i]:
-				self.score6[i]+=3
-			else:
-				if self.chance2[i]==1:
-					self.chance2[i]=0
-					self.score6[i]-=3
-				else:
-					self.chance2[i]=1
-					self.score6[i]=0
-		#calculate metascore
-		for i in range(self.num_meta):
-			self.metascore[i]*=0.9
-			if input==self.metapredictors[i]:
-				self.metascore[i]+=3
-			else:
-				self.metascore[i]=0
-		#Predictors
-		#if length>1:
-		#    output=beat[predict]
-		self.your_his+=input
-		self.my_his+=self.output
-		self.both_his+=self.temp1[(input+self.output)]
-		self.both_his2+=self.temp1[(self.output+input)]
-		self.length+=1
-
-		#history matching
-		for i in range(1):
-			len_size = min(self.length,self.len_rfind[i])
-			j=len_size
-			#both_his
-			while j>=1 and not self.both_his[self.length-j:self.length] in self.both_his[0:self.length-1]:
-				j-=1
-			if j>=1:
-				k = self.both_his.rfind(self.both_his[self.length-j:self.length],0,self.length-1)
-				self.predictors[0+6*i] = self.your_his[j+k]
-				self.predictors[1+6*i] = self.beat[self.my_his[j+k]]
-			else:
-				self.predictors[0+6*i] = random.choice("RPS")
-				self.predictors[1+6*i] = random.choice("RPS")
-			j=len_size
-			#your_his
-			while j>=1 and not self.your_his[self.length-j:self.length] in self.your_his[0:self.length-1]:
-				j-=1
-			if j>=1:
-				k = self.your_his.rfind(self.your_his[self.length-j:self.length],0,self.length-1)
-				self.predictors[2+6*i] = self.your_his[j+k]
-				self.predictors[3+6*i] = self.beat[self.my_his[j+k]]
-			else:
-				self.predictors[2+6*i] = random.choice("RPS")
-				self.predictors[3+6*i] = random.choice("RPS")
-			j=len_size
-			#my_his
-			while j>=1 and not self.my_his[self.length-j:self.length] in self.my_his[0:self.length-1]:
-				j-=1
-			if j>=1:
-				k = self.my_his.rfind(self.my_his[self.length-j:self.length],0,self.length-1)
-				self.predictors[4+6*i] = self.your_his[j+k]
-				self.predictors[5+6*i] = self.beat[self.my_his[j+k]]
-			else:
-				self.predictors[4+6*i] = random.choice("RPS")
-				self.predictors[5+6*i] = random.choice("RPS")
-		
-		#Reverse
-		for i in range(3):
-			temp =""
-			search = self.temp1[(self.output+input)] #last round
-			for start in range(2, min(self.limit[i],self.length)):
-				if search == self.both_his2[self.length-start]:
-					temp+=self.both_his2[self.length-start+1]
-			if(temp==""):
-				self.predictors[6+i] = random.choice("RPS")
-			else:
-				collectR = {"P":0,"R":0,"S":0} #take win/lose from opponent into account
-				for sdf in temp:
-					next_move = self.temp2[sdf]
-					if(self.who_win[next_move]==-1):
-						collectR[self.temp2[sdf][1]]+=3
-					elif(self.who_win[next_move]==0):
-						collectR[self.temp2[sdf][1]]+=1
-					elif(self.who_win[next_move]==1):
-						collectR[self.beat[self.temp2[sdf][0]]]+=1
-				max1 = -1
-				p1 =""
-				for key in collectR:
-					if(collectR[key]>max1):
-						max1 = collectR[key]
-						p1 += key
-				self.predictors[6+i] = random.choice(p1)
-		
-		for i in range(9,27):
-			self.predictors[i]=self.beat[self.beat[self.predictors[i-9]]]
-		#find prediction for each meta
-		self.metapredictors[0]=self.predictors[self.score1.index(max(self.score1))]
-		self.metapredictors[1]=self.predictors[self.score2.index(max(self.score2))]
-		self.metapredictors[2]=self.beat[self.predictors[self.score3.index(max(self.score3))]]
-		self.metapredictors[3]=self.beat[self.predictors[self.score4.index(max(self.score4))]]
-		self.metapredictors[4]=self.predictors[self.score5.index(max(self.score5))]
-		self.metapredictors[5]=self.beat[self.predictors[self.score6.index(max(self.score6))]]
-		for i in range(6,18):
-			self.metapredictors[i] = self.beat[self.metapredictors[i-6]]
-		
-		predict = self.metapredictors[self.metascore.index(max(self.metascore))]
-		# self.output = self.beat[predict]
-		self.output = random.choice(self.not_lose[predict])
-		return 'RPS'.index(self.output)
-	
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
-
-
 AGENTS = {
 
 	'dllu1': Dllu1(),
-	'IO2': IO2(),
+	'rank1': Rank1(),
 
 	'meta-fix': MetaFix(),
 	'rfind': RFind(),
-	'lucker': Lucker(),
 
 	'testing-please-ignore': TestingPleaseIgnore(),
 	'centrifugal-bumblepuppy': Bumble(),
@@ -1470,11 +1280,10 @@ AGENTS = {
 	# ------------------------------------
 
 	'inverse-dllu1': Dllu1(),
-	'inverse-IO2': IO2(),
+	'inverse-rank1': Rank1(),
 
 	'inverse-meta-fix': MetaFix(),
 	'inverse-rfind': RFind(),
-	'inverse-lucker': Lucker(),
 
 	'inverse-testing-please-ignore': TestingPleaseIgnore(),
 	'inverse-centrifugal-bumblepuppy': Bumble(),
@@ -1486,7 +1295,6 @@ AGENTS = {
 	'inverse-memory-patterns': MemoryPatterns()
 
 }
-
 
 class Hydra:
 
@@ -1505,7 +1313,7 @@ class Hydra:
 			'average-beta': [0]
 		} for agent in self.agents}
 
-		self.meta_strategies = list(self.state[self.agents[0]].keys())
+		self.meta_strategies = {key: {'hits': 0, 'score': 0} for key in self.state[self.agents[0]].keys()}
 
 		self.previous = []
 		self.history = []
@@ -1516,12 +1324,23 @@ class Hydra:
 		self.best_agent = None
 		self.action = 0
 
-		self.scores = defaultdict(lambda: 0)
+		self.scores = None
 	
 	def step(self, obs):
 
 		if obs.step > 0:
 			self.history[-1]['competitorStep'] = obs.lastOpponentAction
+			
+			for strat in self.meta_strategies.keys():
+				last_action = self.meta_strategies[strat]['move']
+				
+				if (obs.lastOpponentAction - last_action) % 3 == 2:
+					self.meta_strategies[strat]['hits'] += 1
+				# elif (obs.lastOpponentAction - last_action) % 3 == 1:
+					# self.meta_strategies[strat]['score'] -= 1
+				
+				self.meta_strategies[strat]['score'] = self.meta_strategies[strat]['hits'] / obs.step
+
 		self.previous.append({})
 
 		inverse_history = [{
@@ -1573,29 +1392,32 @@ class Hydra:
 
 				if name[:8] == 'inverse-':
 					agent.set_last_action(inverse_actions)
-				else: agent.set_last_action(last_actions)
+				else:
+					agent.set_last_action(last_actions)
 
 			if name[:8] == 'inverse-':
 				agent_step = (agent.get_action(inverse_history, inverse_obs, self.config) + 1) % 3
-			else: 
-				agent_step = agent.get_action(self.history, obs, self.config)
+			else: agent_step = agent.get_action(self.history, obs, self.config)
 			
 			self.previous[obs.step][name] = agent_step
 
-		self.scores = defaultdict(lambda: 0)
+		self.scores = {agent: 0 for agent in self.agents}
 
 		for strat in self.meta_strategies:
 			sorted_agents = sorted(self.agents, key = lambda a: self.state[a][strat][-1])
+
 			for agent in self.agents:
 				self.scores[agent] += sorted_agents.index(agent) - (len(self.agents) / 2)
+
+			self.meta_strategies[strat]['move'] = self.previous[obs.step][sorted_agents[-1]]
+			self.meta_strategies[strat]['agent'] = sorted_agents[-1]
 
 		self.best_agent = max(self.scores, key = self.scores.get)
 		self.action = self.previous[obs.step][self.best_agent]
 		
 		# Override action here
-		if max(self.scores.values()) < 150 or random.random() < 0.1:
+		if max(self.scores.values()) < 40 or random.random() < 0.1:
 			self.action = random.randrange(3)
-			self.best_agent = 'random'
 
 		self.history.append({'step': self.action, 'agent': self.best_agent})
 		
@@ -1606,7 +1428,7 @@ class Hydra:
 
 		return self.action
 
-def AGENT(obs, config):
+def HYDRA_AGENT(obs, config):
 	global agent
 	if obs.step == 0:
 		agent = Hydra(config)

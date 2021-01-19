@@ -6,19 +6,20 @@ from prettytable import from_csv
 agents = [
 
 	# Public Bots
-	'public/decision_tree.py',
-	'public/decision_tree_2.py',
+	# 'public/decision_tree.py',
+	# 'public/decision_tree_2.py',
 	'public/rfind.py',
 
 	# Previous Contest Winners
-	# 'archive/iocaine.py',
-	# 'archive/greenberg.py',
+	'archive/iocaine.py',
+	'archive/greenberg.py',
 
 	# Previous Contest Archive
 	'archive/testing.py',
 	'archive/IO2.py',
 	'archive/dllu1.py',
 	'archive/bumble.py',
+	'archive/bumble2.py',
 	'archive/meta_fix.py',
 	'archive/lucker.py',
 
@@ -34,7 +35,7 @@ def new_game(player1, player2):
 
 	env = make('rps')
 
-	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/IO2.py', 'archive/iocaine.py']
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'public/decision_tree.py']
 	if player1 == 'hydra.py' and player2 in ez_dubs:
 		rewards = [1, 0]
 	elif player2 == 'hydra.py' and player1 in ez_dubs:
@@ -114,7 +115,7 @@ def main(pool, n, evaluate = 'hydra.py'):
 	pool.sort(key = lambda name: data[name]['score'], reverse = True)
 	with open('leaderboard/leaderboard.csv', 'w') as file:
 		file.write(f"{','.join(data[pool[0]].keys())}")
-		for rank, name in enumerate(pool):
+		for name in pool:
 			output = f'\n'#{rank + 1}'
 			for item in data[name]:
 				output += f'{data[name][item]},'
@@ -135,8 +136,9 @@ def play(agent1, agent2):
 	json = env.toJSON()
 	rewards = json['rewards']
 
-	print(f'{agent1}: {int(rewards[0])} vs {agent2}: {int(rewards[1])}')
+	if None not in rewards:
+		print(f'{agent1}: {int(rewards[0])} vs {agent2}: {int(rewards[1])}')
 
 if __name__ == '__main__':
-	play('hydra.py', 'archive/bumble.py')
+	play('hydra.py', 'archive/bumble2.py')
 	# main(agents, 2)

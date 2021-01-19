@@ -17,12 +17,16 @@ from collections import defaultdict, namedtuple
 from typing import List, Dict
 from scipy.stats import beta
 import numpy as np
-import operator
 import getpass
-import random
+import secrets
+
+random = secrets.SystemRandom()
 
 LOCAL_MODE = getpass.getuser() == 'taaha'
 PRINT_OUTPUT = True
+
+BEAT = lambda action: (action + 1) % 3
+CEDE = lambda action: (action - 1) % 3
 
 class Agent():
 	''' Base class for all agents '''
@@ -36,7 +40,7 @@ class Agent():
 		return random.randrange(3)
 	
 	def get_action(self, obs, config):
-		''' Universal Constant Get Action '''
+		''' Universal function to get action '''
 		if obs.step == 0:
 			return int(self.initial_step(obs, config))
 		return int(self.step(obs, config))
@@ -138,7 +142,7 @@ class DecisionTree(Agent):
 			
 		# predict opponents move and choose an action
 		next_opp_action_pred = self.predict_opponent_move(self.data, self.test_sample)
-		action = int((next_opp_action_pred + 1) % 3)
+		action = int(BEAT(next_opp_action_pred))
 
 		if self.noise:
 			if random.random() < 0.2:
@@ -185,7 +189,6 @@ class DecisionTree2(Agent):
 
 		warmup_period   = warmup_period
 		models          = [ None ] + [ DecisionTreeClassifier() ] * stages
-		actions         = list(range(configuration.signs))  # [0,1,2]
 		step            = observation.step
 		last_action     = self.history['action'][-1] if len(self.history['action']) else 2
 		opponent_action = observation.lastOpponentAction if observation.step > 0   else 2
@@ -193,13 +196,12 @@ class DecisionTree2(Agent):
 		if observation.step > 0:
 			self.history['opponent'].append(opponent_action)
 			
-		winrate  = self.get_winrate(self.history)
-		winstats = self.get_winstats(self.history)
+		# winrate  = self.get_winrate(self.history)
+		# winstats = self.get_winstats(self.history)
 		
 		# Set default values     
 		prediction1 = random.randint(0,2)
 		prediction2 = random.randint(0,2)
-		prediction3 = random.randint(0,2)
 		expected    = random.randint(0,2)
 
 		# We need at least some turns of history for DecisionTreeClassifier to work
@@ -259,11 +261,11 @@ class DecisionTree2(Agent):
 							self.history['prediction2'][n:n+window],
 							self.history['opponent'][n:n+window],
 						]).flatten()
-						for n in range(n_start,len(history['opponent'])-window-warmup_period) 
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
 					])
 					Y = np.array([
 						self.history['opponent'][n+window]
-						for n in range(n_start,len(history['opponent'])-window-warmup_period) 
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
 					])  
 					Z = np.array([
 						self.history['action'][-window+1:]      + [ last_action ], 
@@ -275,8 +277,7 @@ class DecisionTree2(Agent):
 					models[3].fit(X, Y)
 					expected = prediction3 = models[3].predict(Z)[0]
 			
-			except Exception as exception:
-				# print(exception)
+			except Exception:
 				pass
 						
 		if (observation.step <= max(warmup_period,window)):
@@ -284,7 +285,7 @@ class DecisionTree2(Agent):
 		elif (random.random() <= random_freq):
 			action = random.randrange(3)
 		else:
-			action = (expected + 1) % configuration.signs
+			action = BEAT(expected)
 		
 		# Persist state
 		self.history['step'].append(step)
@@ -324,10 +325,10 @@ class Greenberg(Agent):
 		T = len(opp_moves)  #so T is number of trials completed
 
 		def min_index(values):
-			return min(enumerate(values), key=operator.itemgetter(1))[0]
+			return int(np.argmin(values))
 
 		def max_index(values):
-			return max(enumerate(values), key=operator.itemgetter(1))[0]
+			return int(np.argmax(values))
 
 		def find_best_prediction(l):  # l = len
 			bs = -TRIALS
@@ -539,16 +540,11 @@ class Iocaine(Agent):
 			self.stats = Iocaine.Stats()
 			self.lastguess = -1
 
-		def beat(self, i):
-			return (i + 1) % 3
-		def loseto(self, i):
-			return (i - 1) % 3
-
 		def addguess(self, lastmove, guess):
 			if lastmove != -1:
 				diff = (lastmove - self.prediction) % 3
-				self.stats.add(self.beat(diff), 1)
-				self.stats.add(self.loseto(diff), -1)
+				self.stats.add(BEAT(diff), 1)
+				self.stats.add(CEDE(diff), -1)
 				self.stats.advance()
 			self.prediction = guess
 		def bestguess(self, age, best):
@@ -613,7 +609,7 @@ class Iocaine(Agent):
 						self.predict_history[a][mimic][watch].addguess(them, move)
 					# Also we can anticipate the future by expecting it to be the same
 					# as the most frequent past (either counting their moves or my moves).
-					mostfreq, score = self.stats[mimic].max(age, rand, -1)
+					mostfreq, _ = self.stats[mimic].max(age, rand, -1)
 					self.predict_frequency[a][mimic].addguess(them, mostfreq)
 
 			# All the predictors have been updated, but we have not yet scored them
@@ -779,8 +775,8 @@ class IO2(Agent):
 			predict = self.predictors[self.score_predictor.index(max_score)]
 		else:
 			predict = random.choice(self.your_his)
-		self.output = random.choice(self.not_lose[predict])
-		# self.output = self.beat[predict]
+		# self.output = random.choice(self.not_lose[predict])
+		self.output = self.beat[predict]
 		return 'RPS'.index(self.output)
 
 	def set_last_action(self, action):
@@ -832,7 +828,7 @@ class TestingPleaseIgnore(Agent):
 				weighted += points * prob
 			weighted_list.append((h, weighted))
 
-		return max(weighted_list, key=operator.itemgetter(1))[0]
+		return max(weighted_list, key=lambda t: t[1])[0]
 
 	def initial_step(self, obs, config):
 		return 'RPS'.index(self.output)
@@ -1103,7 +1099,7 @@ class Bumble(Agent):
 	
 	def move(self):
 		self.output2 = self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
-		if random.random()<0.1 or random.randint(3,40)>self.length:
+		if random.randint(3,40)>self.length:
 			self.output=self.beat[random.choice("RPS")]
 		return 'RPS'.index(self.output)
 	
@@ -1201,7 +1197,7 @@ class MemoryPatterns(Agent):
 		self.group_memory_length = self.steps_max * 2
 		# list of groups of memory patterns
 		self.groups_of_memory_patterns = []
-		for i in range(self.steps_max, self.steps_min - 1, -1):
+		for _ in range(self.steps_max, self.steps_min - 1, -1):
 			self.groups_of_memory_patterns.append({
 				# how many steps in a row are in the pattern
 				"memory_length": self.group_memory_length,
@@ -1231,7 +1227,7 @@ class MemoryPatterns(Agent):
 			1, 0 and -1 representing win, tie and lost results of the game respectively
 		"""
 		if my_agent_action == opp_action: return 0
-		elif (my_agent_action == (opp_action + 1) % 3): return 1
+		elif (my_agent_action == BEAT(opp_action)): return 1
 		else: return -1
 
 	def step(self, obs, config):
@@ -1654,8 +1650,8 @@ class Lucker(Agent):
 			self.metapredictors[i] = self.beat[self.metapredictors[i-6]]
 		
 		predict = self.metapredictors[self.metascore.index(max(self.metascore))]
-		# self.output = self.beat[predict]
-		self.output = random.choice(self.not_lose[predict])
+		self.output = self.beat[predict]
+		# self.output = random.choice(self.not_lose[predict])
 		return 'RPS'.index(self.output)
 	
 	def set_last_action(self, action):
@@ -1708,7 +1704,6 @@ AGENTS = {
 
 }
 
-
 class GreedySelector:
 
 	def __init__(self, n_actions):
@@ -1723,15 +1718,15 @@ class GreedySelector:
 	
 	def get_action(self, ranked = False):
 		''' Greedy policy'''
-		self.last_action = int(np.random.choice(np.flatnonzero(self.Q == self.Q.max())))
+		self.last_action = int(random.choice(np.flatnonzero(self.Q == self.Q.max())))
 		if ranked:
-			return sorted(list(range(self.n_actions)), key = lambda a: self.Q[a])
+			return sorted(range(self.n_actions), key = lambda a: self.Q[a])
 		self.score = self.Q[self.last_action]
 		return self.last_action
 
 class UCBDecay:
 
-	def __init__(self, n_bandits, decay = 0.98):
+	def __init__(self, n_bandits, decay = 0.97):
 		self.n_bandits = n_bandits
 		self.decay = decay
 		self.n_selections, self.reward_sums = np.full((2, n_bandits), 1e-32)
@@ -1747,14 +1742,12 @@ class UCBDecay:
 		avg_reward = self.reward_sums / self.n_selections
 		delta_i = np.sqrt(2 * np.log(self.step + 1) / self.n_selections)
 		score_matrix = avg_reward + delta_i
-
 		if ranked:
-			return sorted(list(range(self.n_bandits)), key = lambda a: score_matrix[a])
-		
+			return sorted(range(self.n_bandits), key = lambda a: score_matrix[a])
 		self.last_action = int(np.argmax(score_matrix))
 		self.score = score_matrix[self.last_action]
 		self.step += 1
-		
+
 		return self.last_action
 
 class BaySub:
@@ -1771,7 +1764,7 @@ class BaySub:
 	def get_action(self, ranked = False):
 		bound = self.post_a / (self.post_a + self.post_b).astype(float) + beta.std(self.post_a, self.post_b) * 4
 		if ranked:
-			return sorted(list(range(self.n_bandits)), key = lambda a: bound[a])
+			return sorted(range(self.n_bandits), key = lambda a: bound[a])
 		self.last_action = int(np.argmax(bound))
 		self.score = bound[self.last_action]
 		return self.last_action
@@ -1797,7 +1790,7 @@ class GaussianThompsonSampling:
 			value = (np.random.randn() / np.sqrt(self.t[action])) + self.u[action]
 			scores.append(value)
 		if ranked:
-			return sorted(list(range(self.n_actions)), key = lambda a: scores[a])
+			return sorted(range(self.n_actions), key = lambda a: scores[a])
 		self.last_action = int(np.argmax(scores))
 		self.score = max(scores)
 		return self.last_action
@@ -1805,87 +1798,98 @@ class GaussianThompsonSampling:
 class MetaSelector:
 
 	def __init__(self, n_actions):
+
 		self.n_actions = n_actions
+		self.actions = list(range(n_actions))
 
 		self.state = defaultdict(lambda: defaultdict(lambda: [0, 0, 0, 0]))
 		self.selectors = {
-			'greedy': GreedySelector(n_actions),
-			'ucb-decay': UCBDecay(n_actions),
-			'bay-sub': BaySub(n_actions),
-			'gaussian-thompson': GaussianThompsonSampling(n_actions)
+			# 'greedy': GreedySelector(n_actions),
+			# 'ucb': UCBDecay(n_actions, 1),
+			# 'ucb-decay': UCBDecay(n_actions),
+			# 'bay-sub': BaySub(n_actions),
+			# 'gaussian-thompson': GaussianThompsonSampling(n_actions)
 		}
 
 		self.selector_list = list(self.selectors.keys())
-		self.scores = defaultdict(lambda: 0)
+		self.scores = np.zeros(n_actions)
 
 		self.last_action = random.randrange(n_actions)
 		self.score = 0
 
 		self.step = 0
+		self.scl = 3
 
 	def update(self, action, reward):
 
 		for selector in self.selectors.values():
 			selector.update(action, reward)
-		
+
 		state = self.state[action]
 
 		state['beta'][0] = (state['beta'][0] - 1) / 1.05 + 1
 		state['beta'][1] = (state['beta'][1] - 1) / 1.05 + 1
 
 		if reward == 1:
-			state['beta'][0] += 3
+			state['beta'][0] += self.scl
 			state['win-percent'][0] += 1
 			state['drop-switch'][-1] += 1
 			state['win-loss'][-1] += 1
-			state['score-beta'][0] += 3
+			state['score-beta'][0] += self.scl
 			state['dirichlet'][0] += 1
 
 		elif reward == 0:
-			state['beta'][1] += 3
+			state['beta'][1] += self.scl
+			state['loss-percent'][0] -= 1
 			state['drop-switch'][-1] = 0
 			state['win-loss'][-1] -= 1
-			state['score-beta'][1] += 3
+			state['score-beta'][1] += self.scl
 			state['dirichlet'][1] += 1
 
 		else:
-			state['beta'][0] += 1.5
-			state['beta'][0] += 1.5
-			state['score-beta'][1] += 1.5
-			state['score-beta'][1] += 1.5
+			state['beta'][0] += self.scl / 2
+			state['beta'][1] += self.scl / 2
+			state['score-beta'][0] += self.scl / 2
+			state['score-beta'][1] += self.scl / 2
 			state['dirichlet'][2] += 1
 
 		state['beta'][-1] = np.random.beta(state['beta'][0] + 1, state['beta'][1] + 1)
 		state['score-beta'][-1] = np.random.beta(state['score-beta'][0] + 1, state['score-beta'][1] + 1)
 		state['win-percent'][-1] = state['win-percent'][0] / self.step
+		state['loss-percent'][-1] = state['loss-percent'][0] / self.step
 		state['non-beta'][-1] = state['beta'][0] - state['beta'][1]
 
 		n_wins, n_losses, n_ties = state['dirichlet'][:-1]
-		p_win, p_loss, p_tie = np.random.dirichlet([n_wins + 1, n_losses + 1, n_ties + 1])
+		p_win, p_loss, _ = np.random.dirichlet([n_wins + 1, n_losses + 1, n_ties + 1])
 		state['dirichlet'][-1] = p_win - p_loss
 
-	def get_action(self):
+	def get_action(self, ranked = False):
 
 		if self.step:
 		
-			# self.scores = defaultdict(lambda: 0)
-			for key in self.scores.keys():
-				self.scores[key] *= 0.97
+			self.scores = np.zeros(self.n_actions)
+			meta_strategies = list(self.state[0].keys()) + self.selector_list
 
-			for strat in self.selector_list + list(self.state[0].keys()):
-				
+			# meta_strategies = [random.choice(meta_strategies)]
+
+			for strat in meta_strategies:
+
 				if strat in self.selector_list:
-					sorted_actions = self.selectors[strat].get_action(ranked = True)				
-				else: sorted_actions = sorted(list(range(self.n_actions)), key = lambda a: self.state[a][strat][-1])
+					sorted_actions = self.selectors[strat].get_action(ranked = True)			
+				else:
+					sorted_actions = sorted(self.actions, key = lambda a: self.state[a][strat][-1])
 				
-				for action in range(self.n_actions):
-					self.scores[action] += (sorted_actions.index(action) - (self.n_actions / 2))
+				for action in self.actions:
+					if not ranked:
+						self.scores[action] += (sorted_actions.index(action) - (self.n_actions / 2))
+					else: self.scores[action] += sorted_actions.index(action)
 
-			self.score = max(self.scores.values())
-			self.last_action = max(self.scores, key = self.scores.get)
+			self.last_action = self.scores.argmax()
+			self.score = self.scores.max()
 
 		self.step += 1
-
+		if ranked:
+			return self.scores
 		return self.last_action
 
 
@@ -1898,14 +1902,14 @@ class Hydra:
 		self.agents = list(AGENTS.keys())
 		self.n = len(self.agents)
 
-		self.previous = defaultdict(lambda: 0)
+		self.previous = {}
 
-		self.random_noise = True
+		self.random_noise = False
 		self.epsilon = 0.1
-		self.step_size = 1
 
 		self.best_agent = None
 		self.action = None
+		self.score = None
 	
 		self.mab_selector = MetaSelector(self.n)
 	
@@ -1927,39 +1931,55 @@ class Hydra:
 				index = self.agents.index(name)
 
 				# Updating MAB Confidence
-				if prev_step == (obs.lastOpponentAction + 1) % 3:
+				if prev_step == BEAT(obs.lastOpponentAction):
 					self.mab_selector.update(index, 1)
 
 				elif prev_step == obs.lastOpponentAction:
 					self.mab_selector.update(index, 0.5)
 
-				elif prev_step == (obs.lastOpponentAction - 1) % 3:
+				elif prev_step == CEDE(obs.lastOpponentAction):
 					self.mab_selector.update(index, 0)
 				
 				if name[:8] == 'inverse-':
 					agent.set_last_action(obs.lastOpponentAction)
 				else: agent.set_last_action(self.action)
-
+			
 			if name[:8] == 'inverse-':
-				agent_action = (agent.get_action(inverse_obs, self.config) + 1) % 3
+				agent_action = BEAT(agent.get_action(inverse_obs, self.config))
 			else: agent_action = agent.get_action(obs, self.config)
 
 			self.previous[name] = agent_action
 
+		# Strategy voting selection --------------------------
 		self.best_agent = self.agents[self.mab_selector.get_action()]
 		self.action = self.previous[self.best_agent]
+		self.score = round(self.mab_selector.score)
 
-		# Override action here --------------
+		# Weighted agent gains -------------------------------
+		# scores = self.mab_selector.get_action(ranked = True)
 
-		# Random exploration
+		# dist = np.ones(3)
+		# for agent in self.agents:
+		# 	dist[CEDE(self.previous[agent])] += scores[self.agents.index(agent)]
+		
+		# dist = dist / dist.sum()
+
+		# gains = np.zeros(3)
+		# for i in range(dist.size):
+		# 	gains[i] = dist[CEDE(i)] - dist[BEAT(i)]
+		
+		# self.best_agent = self.agents[np.argmax(scores)]
+		# self.action = int(gains.argmax())
+		# self.score = gains
+
+		# Random action override -----------------------------
 		if (self.random_noise and random.random() < self.epsilon):
 			self.action = random.randrange(3)
 			self.best_agent = 'random'
 
 		if PRINT_OUTPUT:
-			score = round(self.mab_selector.score)
-			reward_pad = ' ' * (3 - len(str(obs.reward))); score_pad = ' ' * (3 - len(str(score)))
-			print(f'{obs.step} | reward {obs.reward}{reward_pad} | score {score}{score_pad} | {self.best_agent} ')
+			reward_pad = ' ' * (3 - len(str(obs.reward))); score_pad = ' ' * (3 - len(str(self.score)))
+			print(f'{obs.step} | reward {obs.reward}{reward_pad} | score {self.score}{score_pad} | {self.best_agent} ')
 
 		return self.action
 
