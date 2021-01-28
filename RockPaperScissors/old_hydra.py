@@ -1,19 +1,21 @@
 
 '''
- __ __ __ __ __ __ __ __ __ __ __ __ __ __ __
-|                                            |
-|   Copyright (C) 2020 Taaha Khan @taahakhan |
-|   "Kaggle RPS Hydra Agent" - V.6.0         |
-|   Rock Paper Scissors Algorithm with hydra |
-|   net of strong agents and meta-strategy   |
-|   selectors to pick the best agent and     |
-|   return the best predicted action.        |
-|__ __ __ __ __ __ __ __ __ __ __ __ __ __ __|
+ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __
+|                                               |
+|   Copyright (C) 2021 Taaha Khan @taahakhan    |
+|   "Kaggle RPS Hydra Agent" - V.8.1            |
+|   Rock Paper Scissors Algorithm with hydra    |
+|   net of strong agents and meta-strategy      |
+|   selectors to pick the best agent and        |
+|   return the best predicted action.           |
+|__ __ __ __ __ __ __ __ __ __ __ __ __ __ __ __|
 
 '''
 
 from sklearn.tree import DecisionTreeClassifier
-from collections import defaultdict
+from collections import defaultdict, namedtuple
+from typing import List, Dict
+from scipy.stats import beta
 import numpy as np
 import operator
 import getpass
@@ -25,21 +27,21 @@ PRINT_OUTPUT = True
 class Agent():
 	''' Base class for all agents '''
 
-	def initial_step(self, obs = None, config = None):
+	def initial_step(self, obs, config):
 		''' Move to play on initial step '''
+		return self.step(obs, config)
+	
+	def step(self, obs, config):
+		''' Agent actions per step '''
 		return random.randrange(3)
 	
-	def step(self, history, obs = None, config = None):
-		''' Next moves with historic data '''
-		return random.randrange(3)
-	
-	def get_action(self, history, obs, config):
-		''' DO NOT CHANGE: Universal '''
+	def get_action(self, obs, config):
+		''' Universal Constant Get Action '''
 		if obs.step == 0:
 			return int(self.initial_step(obs, config))
-		return int(self.step(history, obs, config))
+		return int(self.step(obs, config))
 
-	def set_last_action(self, actions):
+	def set_last_action(self, action):
 		''' Overwriting Personal Agent History '''
 		return None
 	
@@ -114,7 +116,7 @@ class DecisionTree(Agent):
 		self.rollouts_hist = {'steps': [], 'actions': [], 'opp-actions': []}
 		return 0
 
-	def step(self, history, observation, configuration):
+	def step(self, observation, configuration):
 
 		k = self.k
 
@@ -145,8 +147,158 @@ class DecisionTree(Agent):
 		self.last_move = {'step': observation.step, 'action': action}
 		return action
 	
-	def set_last_action(self, actions):
-		self.last_move['action'] = actions[-1]
+	def set_last_action(self, action):
+		self.last_move['action'] = action
+
+
+# Decision Tree 2: https://www.kaggle.com/jamesmcguigan/rock-paper-scissors-multi-stage-decision-tree
+class DecisionTree2(Agent):
+	def __init__(self):
+
+		# Initialize starting history
+		self.history = {
+			"step":        [],
+			"prediction1": [],
+			"prediction2": [],
+			"expected":    [],
+			"action":      [],
+			"opponent":    [],
+		}
+
+	def get_winstats(self, history) -> Dict[str,int]:
+		total = len(history['action'])
+		wins = 0
+		draw = 0
+		loss = 0 
+		for n in range(total):
+			if   history['action'][n] == history['opponent'][n] + 1: wins +=  1
+			elif history['action'][n] == history['opponent'][n]:     draw +=  1
+			elif history['action'][n] == history['opponent'][n] - 1: loss +=  1
+		return { "wins": wins, "draw": draw, "loss": loss }
+
+	def get_winrate(self, history):
+		winstats = self.get_winstats(history)
+		winrate  = winstats['wins'] / (winstats['wins'] + winstats['loss']) if (winstats['wins'] + winstats['loss']) else 0
+		return winrate
+
+	def step(self, observation, configuration, window=9, stages=3, random_freq=0.00, warmup_period=10, max_samples=1000):    
+
+		warmup_period   = warmup_period
+		models          = [ None ] + [ DecisionTreeClassifier() ] * stages
+		actions         = list(range(configuration.signs))  # [0,1,2]
+		step            = observation.step
+		last_action     = self.history['action'][-1] if len(self.history['action']) else 2
+		opponent_action = observation.lastOpponentAction if observation.step > 0   else 2
+			
+		if observation.step > 0:
+			self.history['opponent'].append(opponent_action)
+			
+		winrate  = self.get_winrate(self.history)
+		winstats = self.get_winstats(self.history)
+		
+		# Set default values     
+		prediction1 = random.randint(0,2)
+		prediction2 = random.randint(0,2)
+		prediction3 = random.randint(0,2)
+		expected    = random.randint(0,2)
+
+		# We need at least some turns of history for DecisionTreeClassifier to work
+		if observation.step >= window:
+			# First we try to predict the opponents next move based on move history
+			try:
+				n_start = max(1, len(self.history['opponent']) - window - max_samples) 
+				if stages >= 1:
+					X = np.stack([
+						np.array([
+							self.history['action'][n:n+window], 
+							self.history['opponent'][n:n+window]
+						]).flatten()
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
+					])
+					Y = np.array([
+						self.history['opponent'][n+window]
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
+					])  
+					Z = np.array([
+						self.history['action'][-window+1:] + [ last_action ], 
+						self.history['opponent'][-window:] 
+					]).flatten().reshape(1, -1)
+
+					models[1].fit(X, Y)
+					expected = prediction1 = models[1].predict(Z)[0]
+
+				if stages >= 2:
+					# Now retrain including prediction history
+					X = np.stack([
+						np.array([
+							self.history['action'][n:n+window], 
+							self.history['prediction1'][n:n+window],
+							self.history['opponent'][n:n+window],
+						]).flatten()
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
+					])
+					Y = np.array([
+						self.history['opponent'][n+window]
+						for n in range(n_start,len(self.history['opponent'])-window-warmup_period) 
+					])  
+					Z = np.array([
+						self.history['action'][-window+1:]      + [ last_action ], 
+						self.history['prediction1'][-window+1:] + [ prediction1 ],
+						self.history['opponent'][-window:] 
+					]).flatten().reshape(1, -1)
+
+					models[2].fit(X, Y)
+					expected = prediction2 = models[2].predict(Z)[0]
+
+				if stages >= 3:
+					# Now retrain including prediction history
+					X = np.stack([
+						np.array([
+							self.history['action'][n:n+window], 
+							self.history['prediction1'][n:n+window],
+							self.history['prediction2'][n:n+window],
+							self.history['opponent'][n:n+window],
+						]).flatten()
+						for n in range(n_start,len(history['opponent'])-window-warmup_period) 
+					])
+					Y = np.array([
+						self.history['opponent'][n+window]
+						for n in range(n_start,len(history['opponent'])-window-warmup_period) 
+					])  
+					Z = np.array([
+						self.history['action'][-window+1:]      + [ last_action ], 
+						self.history['prediction1'][-window+1:] + [ prediction1 ],
+						self.history['prediction2'][-window+1:] + [ prediction2 ],
+						self.history['opponent'][-window:] 
+					]).flatten().reshape(1, -1)
+
+					models[3].fit(X, Y)
+					expected = prediction3 = models[3].predict(Z)[0]
+			
+			except Exception as exception:
+				# print(exception)
+				pass
+						
+		if (observation.step <= max(warmup_period,window)):
+			action = random.randrange(3)
+		elif (random.random() <= random_freq):
+			action = random.randrange(3)
+		else:
+			action = (expected + 1) % configuration.signs
+		
+		# Persist state
+		self.history['step'].append(step)
+		self.history['prediction1'].append(prediction1)
+		self.history['prediction2'].append(prediction2)
+		self.history['expected'].append(expected)
+		self.history['action'].append(action)
+		if observation.step == 0:  # keep arrays equal length
+			self.history['opponent'].append(random.randint(0, 2))
+
+		return int(action)
+	
+	def set_last_action(self, action):
+		self.history['action'][-1] = action
 
 
 # Greenberg Agent: https://www.kaggle.com/group16/rps-roshambo-competition-greenberg
@@ -327,12 +479,15 @@ class Greenberg(Agent):
 		self.act = self.player(False, self.opponent_hist)
 		return self.act
 
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 		rps_to_text = ('rock','paper','scissors')
-		self.my_hist.append(rps_to_text[history[-1]['step']])
-		self.opponent_hist.append(rps_to_text[history[-1]['competitorStep']])
+		self.opponent_hist.append(rps_to_text[obs.lastOpponentAction])
 		self.act = self.player(self.my_hist, self.opponent_hist)
 		return self.act
+	
+	def set_last_action(self, action):
+		rps_to_text = ('rock','paper','scissors')
+		self.my_hist.append(rps_to_text[action])
 
 
 # Iocane Powder Agent: https://www.kaggle.com/group16/rps-roshambo-comp-iocaine-powder
@@ -488,16 +643,16 @@ class Iocaine(Agent):
 		self.iocaine = self.Iocaine()
 		return self.iocaine.move(-1)
 
-	def step(self, history, observation, configuration):
+	def step(self, observation, configuration):
 		return self.iocaine.move(observation.lastOpponentAction)
 	
-	def set_last_action(self, actions):
+	def set_last_action(self, action):
 		if self.iocaine != None:
-			self.iocaine.histories[0] = actions
+			self.iocaine.histories[0][-1] = action
 
 
 # IO2_fightinguuu Agent From RPSContest: https://web.archive.org/web/20200812062252/http://www.rpscontest.com/entry/885001
-class Rank1(Agent):
+class IO2(Agent):
 	def __init__(self):
 		self.num_predictor = 27
 		self.len_rfind = [20]
@@ -525,8 +680,8 @@ class Rank1(Agent):
 	def initial_step(self, obs, config):
 		return 'RPS'.index(self.output)
 	
-	def step(self, history, obs, config):
-		input = 'RPS'[history[-1]['competitorStep']]
+	def step(self, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
 		#update predictors
 		if len(self.list_predictor[0])<5:
 			front =0
@@ -628,8 +783,8 @@ class Rank1(Agent):
 		# self.output = self.beat[predict]
 		return 'RPS'.index(self.output)
 
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 # Testing Please Ignore Agent from RPSContest: https://web.archive.org/web/20201021153705/http://rpscontest.com/entry/342001
@@ -682,9 +837,9 @@ class TestingPleaseIgnore(Agent):
 	def initial_step(self, obs, config):
 		return 'RPS'.index(self.output)
 
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 
-		input = 'RPS'[history[-1]['competitorStep']]
+		input = 'RPS'[obs.lastOpponentAction]
 
 		self.prev_sc = self.sc
 		self.sc = self.score[self.output + input]
@@ -782,8 +937,8 @@ class TestingPleaseIgnore(Agent):
 		self.output = self.counter_prob(probs)
 		return 'RPS'.index(self.output)
 		
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 # Dllu1 Agent from RPSContest: https://web.archive.org/web/20200812060710/http://www.rpscontest.com/entry/498002
@@ -810,7 +965,7 @@ class Dllu1(Agent):
 	def initial_step(self, obs, config):
 		return self.move()
 
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 		input = 'RPS'[obs.lastOpponentAction]
 		for i in range(self.numPre):
 			pp = self.p[i]
@@ -863,12 +1018,13 @@ class Dllu1(Agent):
 		
 	def move(self):
 		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
-		if max(self.mScore)<3+random.random() or random.randint(3,40)>self.length or random.random() < 0.5:
+		# if max(self.mScore)<3+random.random() or random.randint(3,40)>self.length or random.random() < 0.5:
+		if max(self.mScore)<0.07 or random.randint(3,40)>self.length:
 			self.output=self.beat[random.choice("RPS")]
 		return 'RPS'.index(self.output)
 	
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 # Centrifugal Bumblepuppy: https://web.archive.org/web/20201021155550/http://rpscontest.com/entry/315005
@@ -892,7 +1048,7 @@ class Bumble(Agent):
 	def initial_step(self, obs, config):
 		return self.move()
 
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 		input = 'RPS'[obs.lastOpponentAction]
 		self.oldoutcome = self.outcome
 		self.outcome = (self.beat[input]==self.output2) - (input==self.beat[self.output2])
@@ -951,8 +1107,71 @@ class Bumble(Agent):
 			self.output=self.beat[random.choice("RPS")]
 		return 'RPS'.index(self.output)
 	
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
+
+
+# Centrifugal Bumblepuppy 2: https://web.archive.org/web/20201021155550/http://rpscontest.com/entry/315005
+class Bumble2(Agent):
+
+	def __init__(self):
+		self.numPre = 18
+		self.numMeta = 18
+		self.limit = 8
+		self.beat={'R':'P','P':'S','S':'R'}
+		self.moves=['','','']
+		self.pScore=[[3]*self.numPre] * 6
+		self.centrifuge={'RP':'a','PS':'b','SR':'c','PR':'d','SP':'e','RS':'f','RR':'g','PP':'h','SS':'i'}
+		self.length=0
+		self.p=[random.choice("RPS")]*self.numPre
+		self.m=[random.choice("RPS")]*self.numMeta
+		self.mScore=[3]*self.numMeta
+
+	def initial_step(self, obs, config):
+		return self.move()
+
+	def step(self, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
+		for i in range(self.numPre):
+			self.pScore[0][i]=0.8*self.pScore[0][i]+((input==self.p[i])-(input==self.beat[self.beat[self.p[i]]]))*3
+			self.pScore[1][i]=0.8*self.pScore[1][i]+((self.output==self.p[i])-(self.output==self.beat[self.beat[self.p[i]]]))*3
+			self.pScore[2][i]=0.87*self.pScore[2][i]+(input==self.p[i])*3.3-(input==self.beat[self.p[i]])*0.9-(input==self.beat[self.beat[self.p[i]]])*3
+			self.pScore[3][i]=0.87*self.pScore[3][i]+(self.output==self.p[i])*3.3-(self.output==self.beat[self.p[i]])*0.9-(self.output==self.beat[self.beat[self.p[i]]])*3
+			self.pScore[4][i]=(self.pScore[4][i]+(input==self.p[i])*3)*(1-(input==self.beat[self.beat[self.p[i]]]))
+			self.pScore[5][i]=(self.pScore[5][i]+(self.output==self.p[i])*3)*(1-(self.output==self.beat[self.beat[self.p[i]]]))
+		for i in range(self.numMeta):
+			self.mScore[i]=(self.mScore[i]+(input==self.m[i]))*(1-(input==self.beat[self.beat[self.m[i]]]))
+		self.moves[0]+=self.centrifuge[input+self.output]
+		self.moves[1]+=input		
+		self.moves[2]+=self.output
+		self.length+=1
+		for y in range(3):
+			j=min([self.length,self.limit])
+			while j>=1 and not self.moves[y][self.length-j:self.length] in self.moves[y][0:self.length-1]:
+				j-=1
+			i = self.moves[y].rfind(self.moves[y][self.length-j:self.length],0,self.length-1)
+			self.p[0+2*y] = self.moves[1][j+i] 
+			self.p[1+2*y] = self.beat[self.moves[2][j+i]] 
+		
+		for i in range(6,6*3):
+			self.p[i]=self.beat[self.beat[self.p[i-6]]]
+			
+		for i in range(0,6,2):
+			self.m[i]=       self.p[self.pScore[i  ].index(max(self.pScore[i  ]))]
+			self.m[i+1]=self.beat[self.p[self.pScore[i+1].index(max(self.pScore[i+1]))]]
+		for i in range(6,18):
+			self.m[i]=self.beat[self.beat[self.m[i-6]]]
+		
+		return self.move()
+
+	def move(self):
+		self.output = self.beat[self.m[self.mScore.index(max(self.mScore))]]
+		if max(self.mScore)<0.13 or random.randint(3,40)>self.length:
+			self.output=self.beat[random.choice("RPS")]
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 # Memory Patterns V7 Agent: https://www.kaggle.com/yegorbiryukov/rock-paper-scissors-with-memory-patterns?scriptVersionId=46447097
@@ -1015,10 +1234,7 @@ class MemoryPatterns(Agent):
 		elif (my_agent_action == (opp_action + 1) % 3): return 1
 		else: return -1
 
-	def initial_step(self, obs, config):
-		return self.step([], obs, config)
-
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 		# action of my_agent
 		my_action = None
 		# if it's not first step, add opponent's last action to agent's current memory
@@ -1084,8 +1300,8 @@ class MemoryPatterns(Agent):
 		self.current_memory.append(my_action)
 		return my_action
 	
-	def set_last_action(self, actions):
-		self.current_memory[-1] = actions[-1]
+	def set_last_action(self, action):
+		self.current_memory[-1] = action
 
 
 # RPS_Meta_Fix Agent: https://web.archive.org/web/20200220023240/http://www.rpscontest.com/entry/5649874456412160
@@ -1107,7 +1323,7 @@ class MetaFix(Agent):
 		self.output=self.rot[self.meta[self.skor2.index(max(self.skor2))]]
 		return 'RPS'.index(self.output)
 
-	def step(self, history, obs, config):
+	def step(self, obs, config):
 		input = 'RPS'[obs.lastOpponentAction]
 		for j in range(18):
 			for i in range(4):
@@ -1146,8 +1362,8 @@ class MetaFix(Agent):
 		self.output=self.rot[self.meta[self.skor2.index(max(self.skor2))]]
 		return 'RPS'.index(self.output)
 	
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 # RFind Agent: https://www.kaggle.com/riccardosanson/rps-simple-rfind-agent
@@ -1184,10 +1400,7 @@ class RFind(Agent):
 		self.threat = 0
 		self.output = "P"
 	
-	def initial_step(self, obs, config):
-		return self.step([], obs, config)
-
-	def step(self, history, observation, configuration):    
+	def step(self, observation, configuration):    
 
 		if observation.step < 2:
 			self.output = self.beat[self.output]
@@ -1256,45 +1469,429 @@ class RFind(Agent):
 
 		return 'RPS'.index(self.output)
 	
-	def set_last_action(self, actions):
-		self.output = 'RPS'[actions[-1]]
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
+
+
+# Lucker Agent from RPSContest: https://web.archive.org/web/20191201105926/http://www.rpscontest.com/entry/892001
+class Lucker(Agent):
+	def __init__(self):
+		self.num_predictors =27
+		self.num_meta= 18
+		self.len_rfind = [20]
+		self.limit = [10,20,60]
+		self.beat = { "P":"S" , "R":"P" , "S":"R" }
+		self.not_lose = { "R":"PR", "P":"SP", "S":"RS" } 
+		self.your_his =""
+		self.my_his = ""
+		self.both_his=""
+		self.both_his2=""
+		self.length =0
+		self.score1=[3]*self.num_predictors
+		self.score2=[3]*self.num_predictors
+		self.score3=[3]*self.num_predictors
+		self.score4=[3]*self.num_predictors
+		self.score5=[3]*self.num_predictors
+		self.score6=[3]*self.num_predictors
+		self.metascore=[3]*self.num_meta
+		self.temp1 = { "PP":"1","PR":"2","PS":"3",
+				"RP":"4","RR":"5","RS":"6",
+				"SP":"7","SR":"8","SS":"9"}
+		self.temp2 = { "1":"PP","2":"PR","3":"PS",
+					"4":"RP","5":"RR","6":"RS",
+					"7":"SP","8":"SR","9":"SS"} 
+		self.who_win = { "PP": 0, "PR":1 , "PS":-1,
+					"RP": -1,"RR":0, "RS":1,
+					"SP": 1, "SR":-1, "SS":0}
+		self.index = { "P":0, "R":1, "S":2 }
+		self.chance =[0]*self.num_predictors
+		self.chance2 =[0]*self.num_predictors
+		self.output = random.choice("RPS")
+		self.predictors = [self.output]*self.num_predictors
+		self.metapredictors = [self.output]*self.num_meta
+
+	def initial_step(self, obs, config):
+		return 'RPS'.index(self.output)
+
+	def step(self, obs, config):
+		input = 'RPS'[obs.lastOpponentAction]
+		#calculate score
+		for i in range(self.num_predictors):
+			#meta 1
+			self.score1[i]*=0.8
+			if input==self.predictors[i]:
+				self.score1[i]+=3
+			else:
+				self.score1[i]-=3
+			#meta 2
+			if input==self.predictors[i]:
+				self.score2[i]+=3
+			else:
+				self.score2[i]=0
+			#meta 3
+			self.score3[i]*=0.8
+			if self.output==self.predictors[i]:
+				self.score3[i]+=3
+			else:
+				self.score3[i]-=3
+			#meta 4
+			if self.output==self.predictors[i]:
+				self.score4[i]+=3
+			else:
+				self.score4[i]=0
+			#meta 5
+			self.score5[i]*=0.8
+			if input==self.predictors[i]:
+				self.score5[i]+=3
+			else:
+				if self.chance[i]==1:
+					self.chance[i]=0
+					self.score5[i]-=3
+				else:
+					self.chance[i]=1
+					self.score5[i]=0
+			#meta 6
+			self.score6[i]*=0.8
+			if self.output==self.predictors[i]:
+				self.score6[i]+=3
+			else:
+				if self.chance2[i]==1:
+					self.chance2[i]=0
+					self.score6[i]-=3
+				else:
+					self.chance2[i]=1
+					self.score6[i]=0
+		#calculate metascore
+		for i in range(self.num_meta):
+			self.metascore[i]*=0.9
+			if input==self.metapredictors[i]:
+				self.metascore[i]+=3
+			else:
+				self.metascore[i]=0
+		#Predictors
+		#if length>1:
+		#    output=beat[predict]
+		self.your_his+=input
+		self.my_his+=self.output
+		self.both_his+=self.temp1[(input+self.output)]
+		self.both_his2+=self.temp1[(self.output+input)]
+		self.length+=1
+
+		#history matching
+		for i in range(1):
+			len_size = min(self.length,self.len_rfind[i])
+			j=len_size
+			#both_his
+			while j>=1 and not self.both_his[self.length-j:self.length] in self.both_his[0:self.length-1]:
+				j-=1
+			if j>=1:
+				k = self.both_his.rfind(self.both_his[self.length-j:self.length],0,self.length-1)
+				self.predictors[0+6*i] = self.your_his[j+k]
+				self.predictors[1+6*i] = self.beat[self.my_his[j+k]]
+			else:
+				self.predictors[0+6*i] = random.choice("RPS")
+				self.predictors[1+6*i] = random.choice("RPS")
+			j=len_size
+			#your_his
+			while j>=1 and not self.your_his[self.length-j:self.length] in self.your_his[0:self.length-1]:
+				j-=1
+			if j>=1:
+				k = self.your_his.rfind(self.your_his[self.length-j:self.length],0,self.length-1)
+				self.predictors[2+6*i] = self.your_his[j+k]
+				self.predictors[3+6*i] = self.beat[self.my_his[j+k]]
+			else:
+				self.predictors[2+6*i] = random.choice("RPS")
+				self.predictors[3+6*i] = random.choice("RPS")
+			j=len_size
+			#my_his
+			while j>=1 and not self.my_his[self.length-j:self.length] in self.my_his[0:self.length-1]:
+				j-=1
+			if j>=1:
+				k = self.my_his.rfind(self.my_his[self.length-j:self.length],0,self.length-1)
+				self.predictors[4+6*i] = self.your_his[j+k]
+				self.predictors[5+6*i] = self.beat[self.my_his[j+k]]
+			else:
+				self.predictors[4+6*i] = random.choice("RPS")
+				self.predictors[5+6*i] = random.choice("RPS")
+		
+		#Reverse
+		for i in range(3):
+			temp =""
+			search = self.temp1[(self.output+input)] #last round
+			for start in range(2, min(self.limit[i],self.length)):
+				if search == self.both_his2[self.length-start]:
+					temp+=self.both_his2[self.length-start+1]
+			if(temp==""):
+				self.predictors[6+i] = random.choice("RPS")
+			else:
+				collectR = {"P":0,"R":0,"S":0} #take win/lose from opponent into account
+				for sdf in temp:
+					next_move = self.temp2[sdf]
+					if(self.who_win[next_move]==-1):
+						collectR[self.temp2[sdf][1]]+=3
+					elif(self.who_win[next_move]==0):
+						collectR[self.temp2[sdf][1]]+=1
+					elif(self.who_win[next_move]==1):
+						collectR[self.beat[self.temp2[sdf][0]]]+=1
+				max1 = -1
+				p1 =""
+				for key in collectR:
+					if(collectR[key]>max1):
+						max1 = collectR[key]
+						p1 += key
+				self.predictors[6+i] = random.choice(p1)
+		
+		for i in range(9,27):
+			self.predictors[i]=self.beat[self.beat[self.predictors[i-9]]]
+		#find prediction for each meta
+		self.metapredictors[0]=self.predictors[self.score1.index(max(self.score1))]
+		self.metapredictors[1]=self.predictors[self.score2.index(max(self.score2))]
+		self.metapredictors[2]=self.beat[self.predictors[self.score3.index(max(self.score3))]]
+		self.metapredictors[3]=self.beat[self.predictors[self.score4.index(max(self.score4))]]
+		self.metapredictors[4]=self.predictors[self.score5.index(max(self.score5))]
+		self.metapredictors[5]=self.beat[self.predictors[self.score6.index(max(self.score6))]]
+		for i in range(6,18):
+			self.metapredictors[i] = self.beat[self.metapredictors[i-6]]
+		
+		predict = self.metapredictors[self.metascore.index(max(self.metascore))]
+		# self.output = self.beat[predict]
+		self.output = random.choice(self.not_lose[predict])
+		return 'RPS'.index(self.output)
+	
+	def set_last_action(self, action):
+		self.output = 'RPS'[action]
 
 
 AGENTS = {
 
+	'random': Agent(),
+
+	# ------------------------------------
+
 	'dllu1': Dllu1(),
-	'rank1': Rank1(),
+	'IO2': IO2(),
 
 	'meta-fix': MetaFix(),
 	'rfind': RFind(),
+	'lucker': Lucker(),
 
 	'testing-please-ignore': TestingPleaseIgnore(),
 	'centrifugal-bumblepuppy': Bumble(),
+	'centrifugal-bumblepuppy-2': Bumble2(),
 
 	'iocaine': Iocaine(),
 	'greenberg': Greenberg(),
 
 	'decision-tree': DecisionTree(),
+	'decision-tree-2': DecisionTree2(),
 	'memory-patterns': MemoryPatterns(),
 
 	# ------------------------------------
 
 	'inverse-dllu1': Dllu1(),
-	'inverse-rank1': Rank1(),
+	'inverse-IO2': IO2(),
 
 	'inverse-meta-fix': MetaFix(),
 	'inverse-rfind': RFind(),
+	'inverse-lucker': Lucker(),
 
 	'inverse-testing-please-ignore': TestingPleaseIgnore(),
 	'inverse-centrifugal-bumblepuppy': Bumble(),
+	'inverse-centrifugal-bumblepuppy-2': Bumble2(),
 
 	'inverse-iocaine': Iocaine(),
 	'inverse-greenberg': Greenberg(),
 
 	'inverse-decision-tree': DecisionTree(),
+	'inverse-decision-tree-2': DecisionTree2(),
 	'inverse-memory-patterns': MemoryPatterns()
 
 }
+
+
+class GreedySelector:
+
+	def __init__(self, n_actions):
+		self.n_actions = n_actions
+		self.n = np.ones(n_actions, dtype = int) # action counts n(a)
+		self.Q = np.zeros(n_actions, dtype = float) # value Q(a)
+
+	def update(self, action, reward):
+		''' Update Q action-value given (action, reward) '''
+		self.n[action] += 1
+		self.Q[action] += (1.0 / self.n[action]) * (reward - self.Q[action])
+	
+	def get_action(self, ranked = False):
+		''' Greedy policy'''
+		self.last_action = int(np.random.choice(np.flatnonzero(self.Q == self.Q.max())))
+		if ranked:
+			return sorted(list(range(self.n_actions)), key = lambda a: self.Q[a])
+		self.score = self.Q[self.last_action]
+		return self.last_action
+
+class UCBDecay:
+
+	def __init__(self, n_bandits, decay = 0.98):
+		self.n_bandits = n_bandits
+		self.decay = decay
+		self.n_selections, self.reward_sums = np.full((2, n_bandits), 1e-32)
+		self.step = 0
+
+	def update(self, action, reward):
+		self.n_selections[action] += 1
+		self.reward_sums[action] *= self.decay
+		self.reward_sums[action] += reward
+	
+	def get_action(self, ranked = False):
+
+		avg_reward = self.reward_sums / self.n_selections
+		delta_i = np.sqrt(2 * np.log(self.step + 1) / self.n_selections)
+		score_matrix = avg_reward + delta_i
+
+		if ranked:
+			return sorted(list(range(self.n_bandits)), key = lambda a: score_matrix[a])
+		
+		self.last_action = int(np.argmax(score_matrix))
+		self.score = score_matrix[self.last_action]
+		self.step += 1
+		
+		return self.last_action
+
+class BaySub:
+
+	def __init__(self, n_bandits):
+		self.n_bandits = n_bandits
+		self.post_a = np.ones(n_bandits)
+		self.post_b = np.ones(n_bandits)
+	
+	def update(self, action, reward):
+		self.post_a[action] += reward
+		self.post_b[action] += (1 - reward)
+	
+	def get_action(self, ranked = False):
+		bound = self.post_a / (self.post_a + self.post_b).astype(float) + beta.std(self.post_a, self.post_b) * 4
+		if ranked:
+			return sorted(list(range(self.n_bandits)), key = lambda a: bound[a])
+		self.last_action = int(np.argmax(bound))
+		self.score = bound[self.last_action]
+		return self.last_action
+		
+class GaussianThompsonSampling:
+
+	def __init__(self, n_actions):
+		self.n_actions = n_actions
+		self.t = [0.0001] * n_actions
+		self.u = [1] * n_actions
+		self.Q = [0] * n_actions
+		self.n = [0] * n_actions
+
+	def update(self, action, reward):
+		self.n[action] += 1
+		self.Q[action] = (1 - 1.0 / self.n[action]) * self.Q[action] + (1.0 / self.n[action]) * reward
+		self.u[action] = ((self.t[action] * self.u[action]) + (self.n[action] * self.Q[action])) / (self.t[action] + self.n[action])
+		self.t[action] += 1
+	
+	def get_action(self, ranked = False):
+		scores = []
+		for action in range(self.n_actions):
+			value = (np.random.randn() / np.sqrt(self.t[action])) + self.u[action]
+			scores.append(value)
+		if ranked:
+			return sorted(list(range(self.n_actions)), key = lambda a: scores[a])
+		self.last_action = int(np.argmax(scores))
+		self.score = max(scores)
+		return self.last_action
+
+class MetaSelector:
+
+	def __init__(self, n_actions):
+		self.n_actions = n_actions
+		self.state = {action: defaultdict(lambda: [0, 0, 0, 0]) for action in range(n_actions)}
+		self.weights = defaultdict(lambda: {'wins': 0, 'action': None, 'score': 0})
+		
+		self.selectors = {
+			'greedy': GreedySelector(n_actions),
+			'ucb-decay': UCBDecay(n_actions),
+			'bay-sub': BaySub(n_actions),
+			'gaussian-thompson': GaussianThompsonSampling(n_actions)
+		}
+
+		self.selector_list = list(self.selectors.keys())
+
+		self.scores = defaultdict(lambda: 0)
+		self.last_action = random.randrange(n_actions)
+		self.score = 0
+		self.step = 0
+
+	def update(self, action, reward):
+
+		for selector in self.selectors.values():
+			selector.update(action, reward)
+		
+		if self.step > 1:
+			for strat in self.selector_list + list(self.state[0].keys()):
+				if self.weights[strat]['action'] == action:
+					if reward == 1: self.weights[strat]['wins'] += 1
+					self.weights[strat]['score'] = (self.weights[strat]['wins'] / self.step)
+
+		state = self.state[action]
+
+		state['beta'][0] = (state['beta'][0] - 1) / 1.05 + 1
+		state['beta'][1] = (state['beta'][1] - 1) / 1.05 + 1
+
+		if reward == 1:
+			state['beta'][0] += 3
+			state['win-percent'][0] += 1
+			state['drop-switch'][-1] += 1
+			state['win-loss'][-1] += 1
+			state['score-beta'][0] += 3
+			state['dirichlet'][0] += 1
+
+		elif reward == 0:
+			state['beta'][1] += 3
+			state['drop-switch'][-1] = 0
+			state['win-loss'][-1] -= 1
+			state['score-beta'][1] += 3
+			state['dirichlet'][1] += 1
+
+		else:
+			state['beta'][0] += 1.5
+			state['beta'][0] += 1.5
+			state['score-beta'][1] += 1.5
+			state['score-beta'][1] += 1.5
+			state['dirichlet'][2] += 1
+
+		state['beta'][-1] = np.random.beta(state['beta'][0] + 1, state['beta'][1] + 1)
+		state['score-beta'][-1] = np.random.beta(state['score-beta'][0] + 1, state['score-beta'][1] + 1)
+		state['win-percent'][-1] = state['win-percent'][0] / self.step
+		state['non-beta'][-1] = state['beta'][0] - state['beta'][1]
+
+		n_wins, n_losses, n_ties = state['dirichlet'][:-1]
+		p_win, p_loss, p_tie = np.random.dirichlet([n_wins + 1, n_losses + 1, n_ties + 1])
+		state['dirichlet'][-1] = p_win - p_loss
+
+	def get_action(self):
+		
+		self.scores = defaultdict(lambda: 0)
+
+		for strat in self.selector_list + list(self.state[0].keys()):
+			
+			if strat in self.selector_list:
+				sorted_actions = self.selectors[strat].get_action(ranked = True)				
+			else: sorted_actions = sorted(list(range(self.n_actions)), key = lambda a: self.state[a][strat][-1])
+			
+			self.weights[strat]['action'] = sorted_actions[-1]
+			for action in range(self.n_actions):
+				self.scores[action] += (sorted_actions.index(action) - (self.n_actions / 2))# * self.weights[strat]['score']
+		
+		if self.step:
+			self.score = max(self.scores.values())
+			self.last_action = max(self.scores.keys(), key = self.scores.get)
+
+		self.step += 1
+
+		return self.last_action
+
 
 class Hydra:
 
@@ -1303,132 +1900,85 @@ class Hydra:
 		self.config = config
 
 		self.agents = list(AGENTS.keys())
-		self.state = { agent: {
-			'beta-distribution': [1, 1, 0],
-			'win-percentage': [0, 0],
-			'drop-switch': [0],
-			'win-loss': [0],
-			'score-beta': [1, 1, 0],
-			'non-beta': [0],
-			'average-beta': [0]
-		} for agent in self.agents}
+		self.n = len(self.agents)
 
-		self.meta_strategies = {key: {'hits': 0, 'score': 0} for key in self.state[self.agents[0]].keys()}
+		self.previous = defaultdict(lambda: 0)
 
-		self.previous = []
-		self.history = []
-
-		self.decay_rate = 1.05
-		self.step_size = 3
+		self.random_noise = True
+		self.epsilon = 0.1
+		self.step_size = 1
 
 		self.best_agent = None
-		self.action = 0
+		self.action = None
 
-		self.scores = None
+		# self.selectors = {
+		# 	'greedy': GreedySelector(self.n),
+		# 	'ucb-decay': UCBDecay(self.n),
+		# 	'bay-sub': BaySub(self.n),
+		# 	'gaussian-thompson': GaussianThompsonSampling(self.n),
+		# 	'meta-selector': MetaSelector(self.n)
+		# }
+	
+		self.mab_selector = MetaSelector(self.n)
 	
 	def step(self, obs):
 
-		if obs.step > 0:
-			self.history[-1]['competitorStep'] = obs.lastOpponentAction
-			
-			for strat in self.meta_strategies.keys():
-				last_action = self.meta_strategies[strat]['move']
-				
-				if (obs.lastOpponentAction - last_action) % 3 == 2:
-					self.meta_strategies[strat]['hits'] += 1
-				# elif (obs.lastOpponentAction - last_action) % 3 == 1:
-					# self.meta_strategies[strat]['score'] -= 1
-				
-				self.meta_strategies[strat]['score'] = self.meta_strategies[strat]['hits'] / obs.step
+		# Locally speed up solved matches
+		if LOCAL_MODE:
+			if abs(obs.reward) - self.config.tieRewardThreshold > self.config.episodeSteps - obs.step:
+				return random.randrange(3)
 
-		self.previous.append({})
-
-		inverse_history = [{
-			'step': packet['competitorStep'],
-			'competitorStep': packet['step']
-		} for packet in self.history]
-
-		inverse_obs = lambda: None
-		inverse_obs.lastOpponentAction = self.history[-1]['step'] if obs.step else None
-		inverse_obs.step = obs.step
-
-		inverse_actions = [packet['competitorStep'] for packet in self.history]
-		last_actions = [packet['step'] for packet in self.history]
+		Struct = namedtuple('obs', ['lastOpponentAction', 'step'])
+		inverse_obs = Struct(
+			lastOpponentAction = self.action, 
+			step = obs.step
+		)
 
 		for name, agent in AGENTS.items():
 
 			if obs.step > 0:
 
-				prev_step = self.previous[obs.step - 1][name]
+				prev_step = self.previous[name]
+				index = self.agents.index(name)
 
-				self.state[name]['beta-distribution'][0] = (self.state[name]['beta-distribution'][0] - 1) / self.decay_rate + 1
-				self.state[name]['beta-distribution'][1] = (self.state[name]['beta-distribution'][1] - 1) / self.decay_rate + 1
-				
-				# Won Last Round
-				if (self.history[-1]['competitorStep'] - prev_step) % 3 == 2:
-					self.state[name]['beta-distribution'][0] += self.step_size
-					self.state[name]['drop-switch'][-1] += 1
-					self.state[name]['win-percentage'][0] += 1
-					self.state[name]['win-loss'][-1] += 1
-					self.state[name]['score-beta'][0] += self.step_size
-				
-				# Lost Last Round
-				elif (self.history[-1]['competitorStep'] - prev_step) % 3 == 1:
-					self.state[name]['beta-distribution'][1] += self.step_size
-					self.state[name]['drop-switch'][-1] = 0
-					self.state[name]['win-loss'][-1] -= 1
-					self.state[name]['score-beta'][1] += self.step_size
-				
-				# Tie Round
-				else:
-					self.state[name]['beta-distribution'][0] += self.step_size / 2
-					self.state[name]['beta-distribution'][1] += self.step_size / 2
-				
-				self.state[name]['non-beta'][-1] = self.state[name]['beta-distribution'][0] - self.state[name]['beta-distribution'][1]
-				self.state[name]['average-beta'][-1] = self.state[name]['beta-distribution'][0] / (self.state[name]['beta-distribution'][0] + self.state[name]['beta-distribution'][1])
-				self.state[name]['win-percentage'][-1] = self.state[name]['win-percentage'][0] / obs.step
-				self.state[name]['beta-distribution'][-1] = np.random.beta(self.state[name]['beta-distribution'][0], self.state[name]['beta-distribution'][1])
-				self.state[name]['score-beta'][-1] = np.random.beta(self.state[name]['score-beta'][0], self.state[name]['score-beta'][1])
+				# Updating MAB Confidence
+				if prev_step == (obs.lastOpponentAction + 1) % 3:
+					self.mab_selector.update(index, 1)
 
+				elif prev_step == obs.lastOpponentAction:
+					self.mab_selector.update(index, 0.5)
+
+				elif prev_step == (obs.lastOpponentAction - 1) % 3:
+					self.mab_selector.update(index, 0)
+				
 				if name[:8] == 'inverse-':
-					agent.set_last_action(inverse_actions)
-				else:
-					agent.set_last_action(last_actions)
+					agent.set_last_action(obs.lastOpponentAction)
+				else: agent.set_last_action(self.action)
 
 			if name[:8] == 'inverse-':
-				agent_step = (agent.get_action(inverse_history, inverse_obs, self.config) + 1) % 3
-			else: agent_step = agent.get_action(self.history, obs, self.config)
-			
-			self.previous[obs.step][name] = agent_step
+				agent_step = (agent.get_action(inverse_obs, self.config) + 1) % 3
+			else: agent_step = agent.get_action(obs, self.config)
 
-		self.scores = {agent: 0 for agent in self.agents}
+			self.previous[name] = agent_step
 
-		for strat in self.meta_strategies:
-			sorted_agents = sorted(self.agents, key = lambda a: self.state[a][strat][-1])
+		self.best_agent = self.agents[self.mab_selector.get_action()]
+		self.action = self.previous[self.best_agent]
 
-			for agent in self.agents:
-				self.scores[agent] += sorted_agents.index(agent) - (len(self.agents) / 2)
+		# Override action here --------------
 
-			self.meta_strategies[strat]['move'] = self.previous[obs.step][sorted_agents[-1]]
-			self.meta_strategies[strat]['agent'] = sorted_agents[-1]
-
-		self.best_agent = max(self.scores, key = self.scores.get)
-		self.action = self.previous[obs.step][self.best_agent]
-		
-		# Override action here
-		if max(self.scores.values()) < 40 or random.random() < 0.1:
+		# Random exploration
+		if (self.random_noise and random.random() < self.epsilon):
 			self.action = random.randrange(3)
+			self.best_agent = 'random'
 
-		self.history.append({'step': self.action, 'agent': self.best_agent})
-		
 		if PRINT_OUTPUT:
-			score = round(self.scores[self.best_agent])
-			pad = ' ' * (2 - len(str(score)))
-			# print(f'{obs.step} {obs.reward} -- score {score}{pad} -- {self.best_agent} ')
+			score = round(self.mab_selector.score)
+			reward_pad = ' ' * (3 - len(str(obs.reward))); score_pad = ' ' * (2 - len(str(score)))
+			print(f'{obs.step} | reward {obs.reward}{reward_pad} | score {score}{score_pad} | {self.best_agent} ')
 
 		return self.action
 
-def HYDRA_AGENT(obs, config):
+def AGENT(obs, config):
 	global agent
 	if obs.step == 0:
 		agent = Hydra(config)

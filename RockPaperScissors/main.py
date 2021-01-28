@@ -6,9 +6,11 @@ from prettytable import from_csv
 agents = [
 
 	# Public Bots
-	# 'public/decision_tree.py',
-	# 'public/decision_tree_2.py',
+	'public/decision_tree.py',
+	'public/decision_tree_2.py',
+	'public/memory.py',
 	'public/rfind.py',
+	'public/geometry.py',
 
 	# Previous Contest Winners
 	'archive/iocaine.py',
@@ -35,7 +37,7 @@ def new_game(player1, player2):
 
 	env = make('rps')
 
-	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'public/decision_tree.py']
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'public/decision_tree.py', 'archive/lucker.py', 'archive/iocaine.py', 'archive/IO2.py']
 	if player1 == 'hydra.py' and player2 in ez_dubs:
 		rewards = [1, 0]
 	elif player2 == 'hydra.py' and player1 in ez_dubs:
@@ -125,7 +127,7 @@ def main(pool, n, evaluate = 'hydra.py'):
 	with open('leaderboard/leaderboard_table.txt', 'w') as file:
 		table = from_csv(open('leaderboard/leaderboard.csv'))
 		table.align = 'l'
-		string = table.get_string().replace('|', ' ').replace('+', ' ')
+		string = table.get_string().replace('-', '_').replace('+', '|')
 		file.write(string)
 
 def play(agent1, agent2):
@@ -140,5 +142,5 @@ def play(agent1, agent2):
 		print(f'{agent1}: {int(rewards[0])} vs {agent2}: {int(rewards[1])}')
 
 if __name__ == '__main__':
-	play('hydra.py', 'archive/bumble2.py')
+	play('hydra.py', 'archive/IO2.py')
 	# main(agents, 2)
