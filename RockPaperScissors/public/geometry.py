@@ -4,10 +4,7 @@ from collections import namedtuple
 
 class Geometry:
 		
-	basis = np.array(
-		[1, cmath.exp(2j * cmath.pi * 1 / 3), cmath.exp(2j * cmath.pi * 2 / 3)]
-	)
-
+	basis = np.array([1, cmath.exp(2j * cmath.pi * 1 / 3), cmath.exp(2j * cmath.pi * 2 / 3)])
 	HistMatchResult = namedtuple("HistMatchResult", "idx length")
 
 	@classmethod

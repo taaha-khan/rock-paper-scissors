@@ -37,7 +37,9 @@ def new_game(player1, player2):
 
 	env = make('rps')
 
-	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'public/decision_tree.py', 'archive/lucker.py', 'archive/iocaine.py', 'archive/IO2.py']
+	# Deterministic or easily beatable agents (skip these rounds to save time)
+	ez_dubs = ['archive/greenberg.py', 'archive/meta_fix.py', 'archive/testing.py', 'public/rfind.py', 'archive/lucker.py', 'archive/IO2.py']
+	
 	if player1 == 'hydra.py' and player2 in ez_dubs:
 		rewards = [1, 0]
 	elif player2 == 'hydra.py' and player1 in ez_dubs:
@@ -142,5 +144,5 @@ def play(agent1, agent2):
 		print(f'{agent1}: {int(rewards[0])} vs {agent2}: {int(rewards[1])}')
 
 if __name__ == '__main__':
-	play('hydra.py', 'archive/IO2.py')
+	play('hydra.py', 'public/rfind.py')
 	# main(agents, 2)
