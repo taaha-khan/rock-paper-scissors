@@ -14,6 +14,7 @@
 
 '''
 
+# Importing important imports
 from sklearn.tree import DecisionTreeClassifier
 from collections import defaultdict, namedtuple
 import numpy as np
@@ -21,12 +22,15 @@ import getpass
 import secrets
 import cmath
 
+# Initializing cryptographically secure RNG
 random = secrets.SystemRandom()
 
+# Universal variables
 LOCAL_MODE = getpass.getuser() == 'taaha'
 AGENT_RANDOMNESS = False
 PRINT_OUTPUT = True
 
+# Helper functions
 BEAT = lambda n: (n + 1) % 3
 CEDE = lambda n: (n - 1) % 3
 
@@ -40,7 +44,9 @@ class Agent:
 	def set_last_action(self, action):
 		''' Overwriting Personal Agent History '''
 		return None
-	
+
+
+# AGENT DEFINITIONS --------------------------------------------------------
 
 # Decision Tree Classifier: https://www.kaggle.com/alexandersamarin/decision-tree-classifier
 class DecisionTree(Agent):
@@ -1726,7 +1732,9 @@ class Lucker(Agent):
 	def set_last_action(self, action):
 		self.output = 'RPS'[action]
 
+# --------------------------------------------------------------------------
 
+# Initializing agents
 AGENTS = {
 
 	'random': Agent(),
@@ -1752,11 +1760,13 @@ AGENTS = {
 
 }
 
+# Adding inverse copies of agents
 agent_list = list(AGENTS.items())
 for name, agent in agent_list:
 	AGENTS['inverse-' + name] = agent.__class__()
 
 class GreedySelector:
+	''' Epsilon-Greedy MAB selector implementation '''
 
 	def __init__(self, n_actions):
 		self.n_actions = n_actions
@@ -1776,6 +1786,7 @@ class GreedySelector:
 		return self.last_action
 
 class UCBDecay:
+	''' Upper Confidence Bound MAB selector implementation '''
 
 	def __init__(self, n_bandits, decay = 0.98):
 		self.n_bandits = n_bandits
@@ -1799,6 +1810,7 @@ class UCBDecay:
 		return self.last_action
 	
 class GaussianThompsonSampling:
+	''' Gaussian Thompson Sampling MAB selector implementation '''
 
 	def __init__(self, n_actions):
 		self.n_actions = n_actions
@@ -1813,7 +1825,7 @@ class GaussianThompsonSampling:
 		self.u[action] = ((self.t[action] * self.u[action]) + (self.n[action] * self.Q[action])) / (self.t[action] + self.n[action])
 		self.t[action] += 1
 	
-	def get_action(self, ranked = False):
+	def get_action(self):
 		scores = []
 		for action in range(self.n_actions):
 			value = (np.random.randn() / np.sqrt(self.t[action])) + self.u[action]
@@ -1824,12 +1836,16 @@ class GaussianThompsonSampling:
 		return self.last_action
 
 class MetaSelector:
+	''' Main agent selector class '''
 
 	def __init__(self, n_actions):
 
+		# Init values
 		self.n_actions = n_actions
 		self.actions = np.array(range(n_actions))
+		self.scores = np.zeros(n_actions)
 
+		# Stored data on performance
 		self.state = defaultdict(lambda: defaultdict(lambda: [0] * 4))
 		self.selectors = {
 			'greedy': GreedySelector(n_actions),
@@ -1837,26 +1853,33 @@ class MetaSelector:
 			'gaussian-thompson': GaussianThompsonSampling(n_actions)
 		}
 
+		# Helper actions
 		self.selector_list = list(self.selectors.keys())
-		self.scores = np.zeros(n_actions)
-
 		self.last_action = random.randrange(n_actions)
+
+		# Constant hyperparameters
 		self.score_range = 1
+		self.decay_rate = 1.05
 		self.scl = 3
 
+		# Init helpers
 		self.score = 0
 		self.step = 0
 
 	def update(self, action, reward):
+		''' Updating confidence for action based on reward '''
 
+		# Updating selectors
 		for selector in self.selectors.values():
 			selector.update(action, reward)
 
 		state = self.state[action]
 
-		state['beta'][0] = (state['beta'][0] - 1) / 1.05 + 1
-		state['beta'][1] = (state['beta'][1] - 1) / 1.05 + 1
+		# Decaying initial values
+		state['beta'][0] = (state['beta'][0] - 1) / self.decay_rate + 1
+		state['beta'][1] = (state['beta'][1] - 1) / self.decay_rate + 1
 
+		# Agent won last round
 		if reward == 1:
 			state['beta'][0] += self.scl
 			state['win-percent'][0] += 1
@@ -1865,6 +1888,7 @@ class MetaSelector:
 			state['score-beta'][0] += self.scl
 			state['dirichlet'][0] += 1
 
+		# Agent lost last round
 		elif reward == 0:
 			state['beta'][1] += self.scl
 			state['loss-percent'][0] += 1
@@ -1873,6 +1897,7 @@ class MetaSelector:
 			state['score-beta'][1] += self.scl
 			state['dirichlet'][1] += 1
 
+		# Agent tied last round
 		else:
 			state['beta'][0] += self.scl / 2
 			state['beta'][1] += self.scl / 2
@@ -1880,113 +1905,137 @@ class MetaSelector:
 			state['score-beta'][1] += self.scl / 2
 			state['dirichlet'][2] += 1
 
+		# Finalizing confidence values
 		state['beta'][-1] = np.random.beta(state['beta'][0] + 1, state['beta'][1] + 1)
 		state['score-beta'][-1] = np.random.beta(state['score-beta'][0] + 1, state['score-beta'][1] + 1)
 		state['win-percent'][-1] = state['win-percent'][0] / self.step
 		state['loss-percent'][-1] = -state['loss-percent'][0] / self.step
 		state['non-beta'][-1] = state['beta'][0] - state['beta'][1]
 
+		# Extra Dirichlet Distribution calculations
 		n_wins, n_losses, n_ties = state['dirichlet'][:-1]
 		p_win, p_loss, _ = np.random.dirichlet([n_wins + 1, n_losses + 1, n_ties + 1])
 		state['dirichlet'][-1] = p_win - p_loss
 
-	def get_action(self, ranked = False):
+	def get_action(self, scored = False):
+		''' Getting best action or scores for actions '''
 
+		# If not the first step
 		if self.step:
 		
+			# Initializing state
 			self.scores = np.zeros(self.n_actions)
 			meta_strategies = list(self.state[0].keys()) + self.selector_list
 
+			# Picking a strategy to use
 			# meta_strategies = [random.choice(meta_strategies)]
 
 			for strat in meta_strategies:
 
+				# Getting each action weights per strategy
 				if strat in self.selector_list:
 					_ = self.selectors[strat].get_action()
 					strat_weights = np.array(self.selectors[strat].scores)
 				else:
 					strat_weights = np.array([self.state[a][strat][-1] for a in self.actions])
 
+				# Sorting actions by strat performace
 				# sorted_actions = self.actions[strat_weights.argsort()].tolist()
 
+				# Updating score values for actions
 				for action in self.actions:
-					# self.scores[action] += np.interp(
-					# 	strat_weights[action], 
-					# 	[strat_weights.min(), strat_weights.max()], 
-					# 	[-self.score_range, self.score_range]
-					# )
 					self.scores[action] += np.interp(
 						strat_weights[action], 
 						[strat_weights.min(), strat_weights.max()], 
-						[0, self.score_range]
+						[-self.score_range, self.score_range]
 					)
+					# self.scores[action] += np.interp(
+					# 	strat_weights[action], 
+					# 	[strat_weights.min(), strat_weights.max()], 
+					# 	[0, self.score_range]
+					# )
 					# self.scores[action] += (sorted_actions.index(action) - (self.n_actions / 2))
-					# self.scores[action] += sorted_actions.index(action)
 
+			# Best scoring actions
 			self.last_action = self.scores.argmax()
 			self.score = self.scores.max()
 
 		self.step += 1
-		if ranked:
-			return self.scores
+
+		# Returning data
+		if scored: return self.scores
 		return int(self.last_action)
 
 
 class Hydra:
+	''' Main agent class '''
 
 	def __init__(self, config):
 		
+		# Kaggle format configuration
 		self.config = config
 
+		# Agents and main selector
 		self.agents = list(AGENTS.keys())
-		self.n = len(self.agents)
+		self.selector = MetaSelector(len(self.agents))
 
+		# Saving previous actions
 		self.previous = {}
 
+		# Random parameters
 		self.random_noise = False
 		self.epsilon = 0.1
 
+		# Return values
 		self.best_agent = None
 		self.action = None
 		self.score = None
 	
-		self.selector = MetaSelector(self.n)
-	
 	def step(self, obs):
+		''' Returning an action for a step '''
 
 		# Locally speed up solved matches
 		if LOCAL_MODE:
 			if abs(obs.reward) - self.config.tieRewardThreshold > self.config.episodeSteps - obs.step:
 				return random.randrange(3)
 
+		# Generating an inverse Observation object
 		Struct = namedtuple('Struct', 'lastOpponentAction step')
 		inverse_obs = Struct(self.action, obs.step)
 
+		# Getting actions and scores for all agents
 		for name, agent in AGENTS.items():
 
+			# If not on the first step
 			if obs.step > 0:
 
+				# Previous action of agent
 				prev_step = self.previous[name]
 				index = self.agents.index(name)
 
 				# Updating MAB Confidence
 				if prev_step == BEAT(obs.lastOpponentAction):
-					self.selector.update(index, 1)
+					self.selector.update(index, 1)   # Win
 
 				elif prev_step == obs.lastOpponentAction:
-					self.selector.update(index, 0.5)
+					self.selector.update(index, 0.5) # Draw
 
 				elif prev_step == CEDE(obs.lastOpponentAction):
-					self.selector.update(index, 0)
+					self.selector.update(index, 0)   # Loss
 				
+				# Updating personal history for agents
 				if name[:8] == 'inverse-':
 					agent.set_last_action(obs.lastOpponentAction)
-				else: agent.set_last_action(self.action)
+				else: 
+					agent.set_last_action(self.action)
 			
+			# Getting action from agent
 			if name[:8] == 'inverse-':
 				agent_action = BEAT(agent.step(inverse_obs, self.config))
-			else: agent_action = agent.step(obs, self.config)
+			else: 
+				agent_action = agent.step(obs, self.config)
 
+			# Saving last action from agent
 			self.previous[name] = agent_action
 
 		# Strategy voting selection --------------------------
@@ -1995,19 +2044,25 @@ class Hydra:
 		# self.score = round(self.selector.score, 2)
 
 		# Weighted action gains ------------------------------
-		mab_scores = self.selector.get_action(ranked = True)
+
+		# Receiving and normalizing scores
+		mab_scores = self.selector.get_action(scored = True)
 		scores = mab_scores - mab_scores.min()
 
+		# Generating distribution that opponent plays action
 		dist = np.ones(3)
 		for agent in self.agents:
 			dist[CEDE(self.previous[agent])] += scores[self.agents.index(agent)]
 		
+		# Normalizing so sum is 1.0
 		dist = dist / dist.sum()
 
+		# Getting action gains
 		gains = np.zeros(3)
 		for i in range(dist.size):
 			gains[i] = dist[CEDE(i)] - dist[BEAT(i)]
 
+		# Output variables
 		self.best_agent = self.agents[scores.argmax()]
 		self.action = int(gains.argmax())
 		self.score = gains
@@ -2017,13 +2072,16 @@ class Hydra:
 			self.action = random.randrange(3)
 			self.best_agent = 'random'
 
+		# Printing data to log files
 		if PRINT_OUTPUT:
 			reward_pad = ' ' * (3 - len(str(obs.reward))); score_pad = ' ' * (6 - len(str(self.score)))
 			print(f'{obs.step} | reward {obs.reward}{reward_pad} | score {self.score}{score_pad} | {self.best_agent} ')
 
+		# Returning action
 		return self.action
 
 def main(obs, config):
+	''' Final agent '''
 	global agent
 	if obs.step == 0:
 		agent = Hydra(config)
